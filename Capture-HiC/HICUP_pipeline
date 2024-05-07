@@ -1,0 +1,11 @@
+#input the configuration file and run the following pipeline, this will call HICUP
+#!/bin/sh
+
+#SBATCH -J CHIC-data
+#SBATCH -n 1
+#SBATCH -c 6
+#SBATCH -p public-cpu
+#SBATCH -t 56:00:00
+#SBATCH --mem-per-cpu=10000
+
+srun ${HOME}/softwares/hicup_v0.6.1/hicup --config ${HOME}/fastq/Processing/configuration_file.conf
