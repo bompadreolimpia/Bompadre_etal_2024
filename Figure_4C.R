@@ -25,9 +25,6 @@ GOI_df <- filter(df1, gene_short_name %in% list)
 GOI_df <- data.frame(GOI_df)
 head(GOI_df)
 
-
-
-
 colnames(GOI_df) <- c("genes", "FL_wt_1", "FL_wt_2", "Inv1_1", "Inv1_2", "Inv2_1", "Inv2_2","Rel1_1", "Rel1_2", "Rel2_1", "Rel2_2", "Rel3_1", "Rel3_2", "HL_wt_1", "HL_wt_2")
 row.names(GOI_df) <- GOI_df$genes
 
