@@ -17,6 +17,7 @@ head(Deseq_GFPp[,c(2,4:17)])
 
 df1 <-Deseq_GFPp[,c(2,4:17)]
 
+#genes of interest list
 
 list <- c("Shox2", "Pitx1", "Prrx1", "Jund", "Sox9",
           "Krt14", "Cldn5", "Mrc1", "Ttn", "Runx2", "Dlx2", "Tbx15", "Egr1", "Lhx9", "Junb")
