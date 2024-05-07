@@ -1,0 +1,15 @@
+#here a configuration fine is created for the HICUP software
+
+Outdir:
+Threads:6
+Nofill:1
+Quiet:0
+Keep:0
+Zip:1
+Bowtie2: /opt/ebsofts/MPI/GCC/7.3.0-2.30/OpenMPI/3.1.1/Bowtie2/2.3.4.2/bin/bowtie2
+Index: /home/users/b/bompadre/genome/mm9/mm9bowtie2/mm9
+Digest: /home/users/b/bompadre/genome/fasta/Digest_mm9_DpnII_digested_DpnII_None_18-05-49_09-01-2020.txt
+Format: Sanger
+
+/home/users/b/bompadre/fastq/Processing/data_read1_file.fastq.gz
+/home/users/b/bompadre/fastq/Processing/data_read2_file.fastq.gz
