@@ -5,7 +5,9 @@ library(ggplot2)
 library(dplyr)
 library(tidyverse)
 
-Deseq_GFPp <- read.delim("~/Desktop/PhD_things/Bioinformatics/RNA-seq/DeSeq2/mm39/rnaseq_rscripts/outputs/mergedTables/GFPp_all_Inv_Rel_290124/AllCufflinks_Simplified_norm.txt")
+
+#load the table with normalised counts from DESeq2
+Deseq_GFPp <- read.delim("~/RNA-seq/DeSeq2/mm39/rnaseq_rscripts/outputs/mergedTables/Normalised_reads_table.txt")
 
 View(Deseq_GFPp)
 
