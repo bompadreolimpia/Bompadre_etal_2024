@@ -1,0 +1,2144 @@
+library(DoubletFinder)
+library(Matrix)
+library(dplyr)
+library(sctransform)
+library(Seurat)
+library(SeuratWrappers)
+library(ggplot2)
+library(tidyverse)
+library(colorspace)
+library(topGO)
+library(stringr)
+library(SeuratDisk)
+library(SeuratData)
+library(patchwork)
+
+
+setwd("~/Desktop/10x/mm39/")
+
+#### A.1 -> FLWT_r1 #####
+
+wtfl1 <- Read10X_h5("~/Desktop/10x/mm39/FLWT_rep1_filtered_feature_bc_matrix.h5")
+colnames(wtfl1) <- gsub("-1$","",colnames(wtfl1))
+
+wtfl1 <- Read10X_h5("~/Desktop/10x/mm39/FLWT_rep1_filtered_feature_bc_matrix.h5")
+wtfl1 <- CreateSeuratObject(counts = wtfl1, project = "wtfl1", min.cells = 3, min.features = 200)
+
+wtfl1[["percent.mt"]] <- PercentageFeatureSet(wtfl1, pattern = "^mt-")
+head(wtfl1@meta.data,5)
+summary(wtfl1@meta.data)
+
+t1 <- table(wtfl1@meta.data[["orig.ident"]])
+capture.output(bind_rows(t1), file=paste0("numbers_total.txt"))
+t1
+
+### A.1.2 QUALITY CONTROL 1 (QC_1) ###
+FeatureScatter(wtfl1, feature1 = "nCount_RNA", feature2 = "percent.mt")
+FeatureScatter(wtfl1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+VlnPlot(wtfl1, features = "nCount_RNA", pt.size=0)
+VlnPlot(wtfl1, features = "nFeature_RNA", pt.size=0)
+
+pdf(file=paste0("WTFL1_QC_1_comparison_before_filtering_020823.pdf"))
+VlnPlot(wtfl1, features = "nCount_RNA", pt.size=0)+xlab("orig.ident")+ylab("# UMI")+labs(title="# UMI")
+VlnPlot(wtfl1, features = "nFeature_RNA", pt.size=0)+xlab("orig.ident")+ylab("# genes")+labs(title="# genes")
+VlnPlot(wtfl1, features = "percent.mt", pt.size=0)+xlab("orig.ident")+ylab("% mito.reads")+labs(title="% mito.reads")
+FeatureScatter(wtfl1, feature1 = "nCount_RNA", feature2 = "percent.mt", pt.size=0.2)+xlab("# UMI")+ylab("# percent.mt")
+FeatureScatter(wtfl1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", pt.size=0.2)+xlab("# UMI")+ylab("# genes")
+dev.off()
+
+# save as seurat object 
+saveRDS(wtfl1, file="~/Desktop/10x/mm39/wtfl1_unfiltered.rds")
+rm(wtfl1)
+
+### A.1.3a filtering OPTION1 --> MT > 1 < 7 ###
+wtfl1 <- readRDS("~/Desktop/10x/mm39/wtfl1_unfiltered.rds")
+
+wtfl1 <- subset(wtfl1, subset =  percent.mt >1 & percent.mt < 7)
+FeatureScatter(wtfl1, feature1 = "nCount_RNA", feature2 = "percent.mt")
+table(wtfl1@meta.data[["orig.ident"]])
+
+### A.1.3b filtering OPTION2 --> nfeatures >200 <7500 ###
+wtfl1 <- readRDS("~/Desktop/10x/mm39/wtfl1_unfiltered.rds")
+
+wtfl1 <- subset(wtfl1, subset = nFeature_RNA > 200 & nFeature_RNA < 7500)
+FeatureScatter(wtfl1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+table(wtfl1@meta.data[["orig.ident"]])
+
+### A.1.3c filtering FINAL --> MT > 1.25 < 5 & nfeatures >200 <7500 ###
+wtfl1 <- readRDS("~/Desktop/10x/mm39/wtfl1_unfiltered.rds")
+
+wtfl1 <- subset(wtfl1, subset = nFeature_RNA > 200 & nFeature_RNA < 7500 & percent.mt >1.25 & percent.mt < 5)
+FeatureScatter(wtfl1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+FeatureScatter(wtfl1, feature1 = "nCount_RNA", feature2 = "percent.mt", pt.size=0.2)+xlab("# UMI")+ylab("# percent.mt")
+table(wtfl1@meta.data[["orig.ident"]])
+
+pdf(file=paste0("FLWTr1_QC_1_comparison_after_filtering_mt1.25-5_feature200-7500_020823.pdf"))
+VlnPlot(wtfl1, features = "nCount_RNA", pt.size=0)+xlab("orig.ident")+ylab("# UMI")+labs(title="# UMI")
+VlnPlot(wtfl1, features = "nFeature_RNA", pt.size=0)+xlab("orig.ident")+ylab("# genes")+labs(title="# genes")
+VlnPlot(wtfl1, features = "percent.mt", pt.size=0)+xlab("orig.ident")+ylab("% mito.reads")+labs(title="% mito.reads")
+FeatureScatter(wtfl1, feature1 = "nCount_RNA", feature2 = "percent.mt", pt.size=0.2)+xlab("# UMI")+ylab("# percent.mt")
+FeatureScatter(wtfl1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", pt.size=0.2)+xlab("# UMI")+ylab("# genes")
+dev.off()
+
+# save as seurat object 
+saveRDS(wtfl1, file="~/Desktop/10x/mm39/wtfl1_filtered.rds")
+
+#### A.2 -> FLWT_r2 ####
+#First step load rawdata coming from CellRanger into a Seurat object 
+#This Seurat Object includes only cells with more 200 genes detected and the genes present in at least 3 cells
+wtfl3 <- Read10X_h5("~/Desktop/10x/mm39/FLWT_rep3_filtered_feature_bc_matrix.h5")
+colnames(wtfl3) <- gsub("-1$","",colnames(wtfl3))
+
+wtfl3 <- Read10X_h5("~/Desktop/10x/mm39/FLWT_rep3_filtered_feature_bc_matrix.h5")
+wtfl3 <- CreateSeuratObject(counts = wtfl3, project = "wtfl3", min.cells = 3, min.features = 200)
+
+
+#calculate % of reads belonging to Mitochondiral genes
+wtfl3[["percent.mt"]] <- PercentageFeatureSet(wtfl3, pattern = "^mt-")
+head(wtfl3@meta.data,5)
+summary(wtfl3@meta.data)
+
+#count cells in the seurat object
+t1 <- table(wtfl3@meta.data[["orig.ident"]])
+capture.output(bind_rows(t1), file=paste0("numbers_total.txt"))
+t1
+
+### A.2.2 QUALITY CONTROL 1 (QC_1) ###
+FeatureScatter(wtfl3, feature1 = "nCount_RNA", feature2 = "percent.mt")
+FeatureScatter(wtfl3, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+VlnPlot(wtfl3, features = "nCount_RNA", pt.size=0)
+VlnPlot(wtfl3, features = "nFeature_RNA", pt.size=0)
+
+pdf(file=paste0("FLWT3_QC_2_comparison_before_filtering.pdf"))
+VlnPlot(wtfl3, features = "nCount_RNA", pt.size=0)+xlab("orig.ident")+ylab("# UMI")+labs(title="# UMI")
+VlnPlot(wtfl3, features = "nFeature_RNA", pt.size=0)+xlab("orig.ident")+ylab("# genes")+labs(title="# genes")
+VlnPlot(wtfl3, features = "percent.mt", pt.size=0)+xlab("orig.ident")+ylab("% mito.reads")+labs(title="% mito.reads")
+FeatureScatter(wtfl3, feature1 = "nCount_RNA", feature2 = "percent.mt", pt.size=0.2)+xlab("# UMI")+ylab("# percent.mt")
+FeatureScatter(wtfl3, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", pt.size=0.2)+xlab("# UMI")+ylab("# genes")
+dev.off()
+
+# save as seurat object 
+saveRDS(wtfl3, file="~/Desktop/10x/mm39/wtfl3_unfiltered.rds")
+rm(wtfl3)
+
+### A.2.3a filtering OPTION1 --> MT > 1 < 7 ###
+wtfl3 <- readRDS("~/Desktop/10x/mm39/wtfl3_unfiltered.rds")
+
+wtfl3 <- subset(wtfl3, subset =  percent.mt >1 & percent.mt < 7)
+FeatureScatter(wtfl3, feature1 = "nCount_RNA", feature2 = "percent.mt")
+table(wtfl3@meta.data[["orig.ident"]])
+
+### A.2.3b filtering OPTION2 --> nfeatures >200 <7500 ###
+wtfl3 <- readRDS("~/Desktop/10x/mm39/wtfl3_unfiltered.rds")
+
+wtfl3 <- subset(wtfl3, subset = nFeature_RNA > 200 & nFeature_RNA < 7500)
+FeatureScatter(wtfl3, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+table(wtfl3@meta.data[["orig.ident"]])
+
+### A.2.3c filtering FINAL --> MT > 1.25 < 5 & nfeatures >200 <7500 ###
+wtfl3 <- readRDS("~/Desktop/10x/mm39/wtfl3_unfiltered.rds")
+
+wtfl3 <- subset(wtfl3, subset = nFeature_RNA > 200 & nFeature_RNA < 7500 & percent.mt >1.25 & percent.mt < 5)
+FeatureScatter(wtfl3, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+FeatureScatter(wtfl3, feature1 = "nCount_RNA", feature2 = "percent.mt", pt.size=0.2)+xlab("# UMI")+ylab("# percent.mt")
+table(wtfl3@meta.data[["orig.ident"]])
+
+pdf(file=paste0("WTFL3_QC_2_comparison_after_filtering_mt1.25-5_feature200-7500.pdf"))
+VlnPlot(wtfl3, features = "nCount_RNA", pt.size=0)+xlab("orig.ident")+ylab("# UMI")+labs(title="# UMI")
+VlnPlot(wtfl3, features = "nFeature_RNA", pt.size=0)+xlab("orig.ident")+ylab("# genes")+labs(title="# genes")
+VlnPlot(wtfl3, features = "percent.mt", pt.size=0)+xlab("orig.ident")+ylab("% mito.reads")+labs(title="% mito.reads")
+FeatureScatter(wtfl3, feature1 = "nCount_RNA", feature2 = "percent.mt", pt.size=0.2)+xlab("# UMI")+ylab("# percent.mt")
+FeatureScatter(wtfl3, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", pt.size=0.2)+xlab("# UMI")+ylab("# genes")
+dev.off()
+
+# save as seurat object 
+saveRDS(wtfl3, file="~/Desktop/10x/mm39/wtfl3_filtered.rds")
+
+
+
+
+
+
+
+
+
+#### A.3 -> flinv_r1 ####
+#First step load rawdata coming from CellRanger into a Seurat object 
+#This Seurat Object includes only cells with more 200 genes detected and the genes present in at least 3 cells
+flinv1 <- Read10X_h5("~/Desktop/10x/mm39/FLIn1131_filtered_feature_bc_matrix.h5")
+colnames(flinv1) <- gsub("-1$","",colnames(flinv1))
+
+flinv1 <- Read10X_h5("~/Desktop/10x/mm39/FLIn1131_filtered_feature_bc_matrix.h5")
+flinv1 <- CreateSeuratObject(counts = flinv1, project = "flinv1", min.cells = 3, min.features = 200)
+
+#calculate % of reads belonging to Mitochondiral genes
+flinv1[["percent.mt"]] <- PercentageFeatureSet(flinv1, pattern = "^mt-")
+head(flinv1@meta.data,5)
+summary(flinv1@meta.data)
+
+#count cells in the seurat object
+t1 <- table(flinv1@meta.data[["orig.ident"]])
+capture.output(bind_rows(t1), file=paste0("numbers_total.txt"))
+t1
+
+### A.3.2 QUALITY CONTROL 1 (QC_1) ###
+FeatureScatter(flinv1, feature1 = "nCount_RNA", feature2 = "percent.mt")
+FeatureScatter(flinv1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+VlnPlot(flinv1, features = "nCount_RNA", pt.size=0)
+VlnPlot(flinv1, features = "nFeature_RNA", pt.size=0)
+
+pdf(file=paste0("flinv1_QC_1_comparison_before_filtering.pdf"))
+VlnPlot(flinv1, features = "nCount_RNA", pt.size=0)+xlab("orig.ident")+ylab("# UMI")+labs(title="# UMI")
+VlnPlot(flinv1, features = "nFeature_RNA", pt.size=0)+xlab("orig.ident")+ylab("# genes")+labs(title="# genes")
+VlnPlot(flinv1, features = "percent.mt", pt.size=0)+xlab("orig.ident")+ylab("% mito.reads")+labs(title="% mito.reads")
+FeatureScatter(flinv1, feature1 = "nCount_RNA", feature2 = "percent.mt", pt.size=0.2)+xlab("# UMI")+ylab("# percent.mt")
+FeatureScatter(flinv1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", pt.size=0.2)+xlab("# UMI")+ylab("# genes")
+dev.off()
+
+# save as seurat object 
+saveRDS(flinv1, file="~/Desktop/10x/mm39/flinv1_unfiltered.rds")
+rm(flinv1)
+
+### A.3.3a filtering OPTION1 --> MT > 1 < 7 ###
+flinv1 <- readRDS("~/Desktop/10x/mm39/flinv1_unfiltered.rds")
+
+flinv1 <- subset(flinv1, subset =  percent.mt >1 & percent.mt < 7)
+FeatureScatter(flinv1, feature1 = "nCount_RNA", feature2 = "percent.mt")
+table(flinv1@meta.data[["orig.ident"]])
+
+### A.3.3b filtering OPTION2 --> nfeatures >200 <7500 ###
+flinv1 <- readRDS("~/Desktop/10x/mm39/flinv1_unfiltered.rds")
+
+flinv1 <- subset(flinv1, subset = nFeature_RNA > 200 & nFeature_RNA < 7500)
+FeatureScatter(flinv1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+table(flinv1@meta.data[["orig.ident"]])
+
+### A.3.3c filtering FINAL --> MT > 1.25 < 5 & nfeatures >200 <7500 ###
+flinv1 <- readRDS("~/Desktop/10x/mm39/flinv1_unfiltered.rds")
+
+flinv1 <- subset(flinv1, subset = nFeature_RNA > 200 & nFeature_RNA < 7500 & percent.mt >1.25 & percent.mt < 5)
+FeatureScatter(flinv1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+FeatureScatter(flinv1, feature1 = "nCount_RNA", feature2 = "percent.mt", pt.size=0.2)+xlab("# UMI")+ylab("# percent.mt")
+table(flinv1@meta.data[["orig.ident"]])
+
+pdf(file=paste0("flinv1_QC_1_comparison_after_filtering_mt1.25-5_feature200-7500.pdf"))
+VlnPlot(flinv1, features = "nCount_RNA", pt.size=0)+xlab("orig.ident")+ylab("# UMI")+labs(title="# UMI")
+VlnPlot(flinv1, features = "nFeature_RNA", pt.size=0)+xlab("orig.ident")+ylab("# genes")+labs(title="# genes")
+VlnPlot(flinv1, features = "percent.mt", pt.size=0)+xlab("orig.ident")+ylab("% mito.reads")+labs(title="% mito.reads")
+FeatureScatter(flinv1, feature1 = "nCount_RNA", feature2 = "percent.mt", pt.size=0.2)+xlab("# UMI")+ylab("# percent.mt")
+FeatureScatter(flinv1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", pt.size=0.2)+xlab("# UMI")+ylab("# genes")
+dev.off()
+
+# save as seurat object 
+saveRDS(flinv1, file="~/Desktop/10x/mm39/flinv1_filtered.rds")
+
+#### A.4 -> flinv_r2 ####
+#First step load rawdata coming from CellRanger into a Seurat object 
+#This Seurat Object includes only cells with more 200 genes detected and the genes present in at least 3 cells
+flinv2 <- Read10X_h5("~/Desktop/10x/mm39/FLIn1132_filtered_feature_bc_matrix.h5")
+colnames(flinv2) <- gsub("-1$","",colnames(flinv2))
+
+flinv2 <- Read10X_h5("~/Desktop/10x/mm39/FLIn1132_filtered_feature_bc_matrix.h5")
+flinv2 <- CreateSeuratObject(counts = flinv2, project = "flinv2", min.cells = 3, min.features = 200)
+
+#calculate % of reads belonging to Mitochondiral genes
+flinv2[["percent.mt"]] <- PercentageFeatureSet(flinv2, pattern = "^mt-")
+head(flinv2@meta.data,5)
+summary(flinv2@meta.data)
+
+#count cells in the seurat object
+t1 <- table(flinv2@meta.data[["orig.ident"]])
+capture.output(bind_rows(t1), file=paste0("numbers_total.txt"))
+t1
+
+### A.4.2 QUALITY CONTROL 1 (QC_1) ###
+FeatureScatter(flinv2, feature1 = "nCount_RNA", feature2 = "percent.mt")
+FeatureScatter(flinv2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+VlnPlot(flinv2, features = "nCount_RNA", pt.size=0)
+VlnPlot(flinv2, features = "nFeature_RNA", pt.size=0)
+
+pdf(file=paste0("flinv2_QC_2_comparison_before_filtering.pdf"))
+VlnPlot(flinv2, features = "nCount_RNA", pt.size=0)+xlab("orig.ident")+ylab("# UMI")+labs(title="# UMI")
+VlnPlot(flinv2, features = "nFeature_RNA", pt.size=0)+xlab("orig.ident")+ylab("# genes")+labs(title="# genes")
+VlnPlot(flinv2, features = "percent.mt", pt.size=0)+xlab("orig.ident")+ylab("% mito.reads")+labs(title="% mito.reads")
+FeatureScatter(flinv2, feature1 = "nCount_RNA", feature2 = "percent.mt", pt.size=0.2)+xlab("# UMI")+ylab("# percent.mt")
+FeatureScatter(flinv2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", pt.size=0.2)+xlab("# UMI")+ylab("# genes")
+dev.off()
+
+# save as seurat object 
+saveRDS(flinv2, file="~/Desktop/10x/mm39/flinv2_unfiltered.rds")
+rm(flinv2)
+
+### A.4.3a filtering OPTION1 --> MT > 1 < 7 ###
+flinv2 <- readRDS("~/Desktop/10x/mm39/flinv2_unfiltered.rds")
+
+flinv2 <- subset(flinv2, subset =  percent.mt >1 & percent.mt < 7)
+FeatureScatter(flinv2, feature1 = "nCount_RNA", feature2 = "percent.mt")
+table(flinv2@meta.data[["orig.ident"]])
+
+### A.4.3b filtering OPTION2 --> nfeatures >200 <7500 ###
+flinv2 <- readRDS("~/Desktop/10x/mm39/flinv2_unfiltered.rds")
+
+flinv2 <- subset(flinv2, subset = nFeature_RNA > 200 & nFeature_RNA < 7500)
+FeatureScatter(flinv2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+table(flinv2@meta.data[["orig.ident"]])
+
+### A.4.3c filtering FINAL --> MT > 1.25 < 5 & nfeatures >200 <7500 ###
+flinv2 <- readRDS("~/Desktop/10x/mm39/flinv2_unfiltered.rds")
+
+flinv2 <- subset(flinv2, subset = nFeature_RNA > 200 & nFeature_RNA < 7500 & percent.mt >1.25 & percent.mt < 5)
+FeatureScatter(flinv2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+FeatureScatter(flinv2, feature1 = "nCount_RNA", feature2 = "percent.mt", pt.size=0.2)+xlab("# UMI")+ylab("# percent.mt")
+table(flinv2@meta.data[["orig.ident"]])
+
+pdf(file=paste0("flinv2_QC_2_comparison_after_filtering_mt1.25-5_feature200-7500.pdf"))
+VlnPlot(flinv2, features = "nCount_RNA", pt.size=0)+xlab("orig.ident")+ylab("# UMI")+labs(title="# UMI")
+VlnPlot(flinv2, features = "nFeature_RNA", pt.size=0)+xlab("orig.ident")+ylab("# genes")+labs(title="# genes")
+VlnPlot(flinv2, features = "percent.mt", pt.size=0)+xlab("orig.ident")+ylab("% mito.reads")+labs(title="% mito.reads")
+FeatureScatter(flinv2, feature1 = "nCount_RNA", feature2 = "percent.mt", pt.size=0.2)+xlab("# UMI")+ylab("# percent.mt")
+FeatureScatter(flinv2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", pt.size=0.2)+xlab("# UMI")+ylab("# genes")
+dev.off()
+
+# save as seurat object 
+saveRDS(flinv2, file="~/Desktop/10x/mm39/flinv2_filtered.rds")
+
+#### A.5 -> fldcas9 ####
+#First step load rawdata coming from CellRanger into a Seurat object 
+#This Seurat Object includes only cells with more 200 genes detected and the genes present in at least 3 cells
+fldcas9 <- Read10X_h5("~/Desktop/10x/mm39/206FLr1_E125_filtered_feature_bc_matrix.h5")
+colnames(fldcas9) <- gsub("-1$","",colnames(fldcas9))
+
+fldcas9 <- Read10X_h5("~/Desktop/10x/mm39/206FLr1_E125_filtered_feature_bc_matrix.h5")
+fldcas9 <- CreateSeuratObject(counts = fldcas9, project = "fldcas9", min.cells = 3, min.features = 200)
+
+
+#calculate % of reads belonging to Mitochondiral genes
+fldcas9[["percent.mt"]] <- PercentageFeatureSet(fldcas9, pattern = "^mt-")
+head(fldcas9@meta.data,5)
+summary(fldcas9@meta.data)
+
+#count cells in the seurat object
+t1 <- table(fldcas9@meta.data[["orig.ident"]])
+capture.output(bind_rows(t1), file=paste0("numbers_total.txt"))
+t1
+
+### A.5.2 QUALITY CONTROL 1 (QC_1) ###
+FeatureScatter(fldcas9, feature1 = "nCount_RNA", feature2 = "percent.mt")
+FeatureScatter(fldcas9, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+VlnPlot(fldcas9, features = "nCount_RNA", pt.size=0)
+VlnPlot(fldcas9, features = "nFeature_RNA", pt.size=0)
+
+pdf(file=paste0("206FLdCas9_QC_1_comparison_before_filtering.pdf"))
+VlnPlot(fldcas9, features = "nCount_RNA", pt.size=0)+xlab("orig.ident")+ylab("# UMI")+labs(title="# UMI")
+VlnPlot(fldcas9, features = "nFeature_RNA", pt.size=0)+xlab("orig.ident")+ylab("# genes")+labs(title="# genes")
+VlnPlot(fldcas9, features = "percent.mt", pt.size=0)+xlab("orig.ident")+ylab("% mito.reads")+labs(title="% mito.reads")
+FeatureScatter(fldcas9, feature1 = "nCount_RNA", feature2 = "percent.mt", pt.size=0.2)+xlab("# UMI")+ylab("# percent.mt")
+FeatureScatter(fldcas9, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", pt.size=0.2)+xlab("# UMI")+ylab("# genes")
+dev.off()
+
+# save as seurat object 
+saveRDS(fldcas9, file="~/Desktop/10x/mm39/fldcas9_unfiltered.rds")
+rm(fldcas9)
+
+### A.5.3a filtering OPTION1 --> MT > 1 < 7 ###
+fldcas9 <- readRDS("~/Desktop/10x/mm39/fldcas9_unfiltered.rds")
+
+fldcas9 <- subset(fldcas9, subset =  percent.mt >1 & percent.mt < 7)
+FeatureScatter(fldcas9, feature1 = "nCount_RNA", feature2 = "percent.mt")
+table(fldcas9@meta.data[["orig.ident"]])
+
+### A.5.3b filtering OPTION2 --> nfeatures >200 <7500 ###
+fldcas9 <- readRDS("~/Desktop/10x/mm39/fldcas9_unfiltered.rds")
+
+fldcas9 <- subset(fldcas9, subset = nFeature_RNA > 200 & nFeature_RNA < 7500)
+FeatureScatter(fldcas9, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+table(fldcas9@meta.data[["orig.ident"]])
+
+### A.5.3c filtering FINAL --> MT > 1.25 < 5 & nfeatures >200 <7500 ###
+fldcas9 <- readRDS("~/Desktop/10x/mm39/fldcas9_unfiltered.rds")
+
+fldcas9 <- subset(fldcas9, subset = nFeature_RNA > 200 & nFeature_RNA < 7500 & percent.mt >1.25 & percent.mt < 5)
+FeatureScatter(fldcas9, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+FeatureScatter(fldcas9, feature1 = "nCount_RNA", feature2 = "percent.mt", pt.size=0.2)+xlab("# UMI")+ylab("# percent.mt")
+table(fldcas9@meta.data[["orig.ident"]])
+
+pdf(file=paste0("206FLdCas9_QC_1_comparison_after_filtering_mt1.25-5_feature200-7500.pdf"))
+VlnPlot(fldcas9, features = "nCount_RNA", pt.size=0)+xlab("orig.ident")+ylab("# UMI")+labs(title="# UMI")
+VlnPlot(fldcas9, features = "nFeature_RNA", pt.size=0)+xlab("orig.ident")+ylab("# genes")+labs(title="# genes")
+VlnPlot(fldcas9, features = "percent.mt", pt.size=0)+xlab("orig.ident")+ylab("% mito.reads")+labs(title="% mito.reads")
+FeatureScatter(fldcas9, feature1 = "nCount_RNA", feature2 = "percent.mt", pt.size=0.2)+xlab("# UMI")+ylab("# percent.mt")
+FeatureScatter(fldcas9, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", pt.size=0.2)+xlab("# UMI")+ylab("# genes")
+dev.off()
+
+# save as seurat object 
+saveRDS(fldcas9, file="~/Desktop/10x/mm39/fldcas9_filtered.rds")
+
+
+#### A.6 -> HL_WT_r1 ######
+#First step load rawdata coming from CellRanger into a Seurat object 
+#This Seurat Object includes only cells with more 200 genes detected and the genes present in at least 3 cells
+wthl1 <- Read10X_h5("~/Desktop/10x/mm39/wthl1_filtered_feature_bc_matrix.h5")
+colnames(wthl1) <- gsub("-1$","",colnames(wthl1))
+
+wthl1 <- Read10X_h5("~/Desktop/10x/mm39/wthl1_filtered_feature_bc_matrix.h5")
+wthl1 <- CreateSeuratObject(counts = wthl1, project = "wthl1", min.cells = 3, min.features = 200)
+
+
+#calculate % of reads belonging to Mitochondiral genes
+wthl1[["percent.mt"]] <- PercentageFeatureSet(wthl1, pattern = "^mt-")
+head(wthl1@meta.data,5)
+summary(wthl1@meta.data)
+
+#count cells in the seurat object
+t1 <- table(wthl1@meta.data[["orig.ident"]])
+capture.output(bind_rows(t1), file=paste0("numbers_total.txt"))
+t1
+
+### A.6.2 QUALITY CONTROL 1 (QC_1) ###
+FeatureScatter(wthl1, feature1 = "nCount_RNA", feature2 = "percent.mt")
+FeatureScatter(wthl1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+VlnPlot(wthl1, features = "nCount_RNA", pt.size=0)
+VlnPlot(wthl1, features = "nFeature_RNA", pt.size=0)
+
+pdf(file=paste0("WTHL1_QC_1_comparison_before_filtering.pdf"))
+VlnPlot(wthl1, features = "nCount_RNA", pt.size=0)+xlab("orig.ident")+ylab("# UMI")+labs(title="# UMI")
+VlnPlot(wthl1, features = "nFeature_RNA", pt.size=0)+xlab("orig.ident")+ylab("# genes")+labs(title="# genes")
+VlnPlot(wthl1, features = "percent.mt", pt.size=0)+xlab("orig.ident")+ylab("% mito.reads")+labs(title="% mito.reads")
+FeatureScatter(wthl1, feature1 = "nCount_RNA", feature2 = "percent.mt", pt.size=0.2)+xlab("# UMI")+ylab("# percent.mt")
+FeatureScatter(wthl1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", pt.size=0.2)+xlab("# UMI")+ylab("# genes")
+dev.off()
+
+# save as seurat object 
+saveRDS(wthl1, file="~/Desktop/10x/mm39/wthl1_unfiltered.rds")
+rm(wthl1)
+
+### A.6.3a filtering OPTION1 --> MT > 1 < 7 ###
+wthl1 <- readRDS("~/Desktop/10x/mm39/wthl1_unfiltered.rds")
+
+wthl1 <- subset(wthl1, subset =  percent.mt >1 & percent.mt < 7)
+FeatureScatter(wthl1, feature1 = "nCount_RNA", feature2 = "percent.mt")
+table(wthl1@meta.data[["orig.ident"]])
+
+### A.6.3b filtering OPTION2 --> nfeatures >200 <7500 ###
+wthl1 <- readRDS("~/Desktop/10x/mm39/wthl1_unfiltered.rds")
+
+wthl1 <- subset(wthl1, subset = nFeature_RNA > 200 & nFeature_RNA < 7500)
+FeatureScatter(wthl1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+table(wthl1@meta.data[["orig.ident"]])
+
+### A.6.3c filtering FINAL --> MT > 1.25 < 5 & nfeatures >200 <7500 ###
+wthl1 <- readRDS("~/Desktop/10x/mm39/wthl1_unfiltered.rds")
+
+wthl1 <- subset(wthl1, subset = nFeature_RNA > 200 & nFeature_RNA < 7500 & percent.mt >1.25 & percent.mt < 5)
+FeatureScatter(wthl1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+FeatureScatter(wthl1, feature1 = "nCount_RNA", feature2 = "percent.mt", pt.size=0.2)+xlab("# UMI")+ylab("# percent.mt")
+table(wthl1@meta.data[["orig.ident"]])
+
+pdf(file=paste0("wthl1_QC_1_comparison_after_filtering_mt1.25-5_feature200-7500.pdf"))
+VlnPlot(wthl1, features = "nCount_RNA", pt.size=0)+xlab("orig.ident")+ylab("# UMI")+labs(title="# UMI")
+VlnPlot(wthl1, features = "nFeature_RNA", pt.size=0)+xlab("orig.ident")+ylab("# genes")+labs(title="# genes")
+VlnPlot(wthl1, features = "percent.mt", pt.size=0)+xlab("orig.ident")+ylab("% mito.reads")+labs(title="% mito.reads")
+FeatureScatter(wthl1, feature1 = "nCount_RNA", feature2 = "percent.mt", pt.size=0.2)+xlab("# UMI")+ylab("# percent.mt")
+FeatureScatter(wthl1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", pt.size=0.2)+xlab("# UMI")+ylab("# genes")
+dev.off()
+
+# save as seurat object 
+saveRDS(wthl1, file="~/Desktop/10x/mm39/wthl1_filtered.rds")
+
+#### A.7 -> HL_WT_r2 ######
+#First step load rawdata coming from CellRanger into a Seurat object 
+#This Seurat Object includes only cells with more 200 genes detected and the genes present in at least 3 cells
+wthl2 <- Read10X_h5("~/Desktop/10x/mm39/wthl2_filtered_feature_bc_matrix.h5")
+colnames(wthl2) <- gsub("-1$","",colnames(wthl2))
+
+wthl2 <- Read10X_h5("~/Desktop/10x/mm39/wthl2_filtered_feature_bc_matrix.h5")
+wthl2 <- CreateSeuratObject(counts = wthl2, project = "wthl2", min.cells = 3, min.features = 200)
+
+
+#calculate % of reads belonging to Mitochondiral genes
+wthl2[["percent.mt"]] <- PercentageFeatureSet(wthl2, pattern = "^mt-")
+head(wthl2@meta.data,5)
+summary(wthl2@meta.data)
+
+#count cells in the seurat object
+t1 <- table(wthl2@meta.data[["orig.ident"]])
+capture.output(bind_rows(t1), file=paste0("numbers_total.txt"))
+t1
+
+### A.7.2 QUALITY CONTROL 1 (QC_1) ###
+FeatureScatter(wthl2, feature1 = "nCount_RNA", feature2 = "percent.mt")
+FeatureScatter(wthl2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+VlnPlot(wthl2, features = "nCount_RNA", pt.size=0)
+VlnPlot(wthl2, features = "nFeature_RNA", pt.size=0)
+
+pdf(file=paste0("wthl2_QC_1_comparison_before_filtering.pdf"))
+VlnPlot(wthl2, features = "nCount_RNA", pt.size=0)+xlab("orig.ident")+ylab("# UMI")+labs(title="# UMI")
+VlnPlot(wthl2, features = "nFeature_RNA", pt.size=0)+xlab("orig.ident")+ylab("# genes")+labs(title="# genes")
+VlnPlot(wthl2, features = "percent.mt", pt.size=0)+xlab("orig.ident")+ylab("% mito.reads")+labs(title="% mito.reads")
+FeatureScatter(wthl2, feature1 = "nCount_RNA", feature2 = "percent.mt", pt.size=0.2)+xlab("# UMI")+ylab("# percent.mt")
+FeatureScatter(wthl2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", pt.size=0.2)+xlab("# UMI")+ylab("# genes")
+dev.off()
+
+# save as seurat object 
+saveRDS(wthl2, file="~/Desktop/10x/mm39/wthl2_unfiltered.rds")
+rm(wthl2)
+
+### A.7.3a filtering OPTION1 --> MT > 1 < 7 ###
+wthl2 <- readRDS("~/Desktop/10x/mm39/wthl2_unfiltered.rds")
+
+wthl2 <- subset(wthl2, subset =  percent.mt >1 & percent.mt < 7)
+FeatureScatter(wthl2, feature1 = "nCount_RNA", feature2 = "percent.mt")
+table(wthl2@meta.data[["orig.ident"]])
+
+### A.7.3b filtering OPTION2 --> nfeatures >200 <7500 ###
+wthl2 <- readRDS("~/Desktop/10x/mm39/wthl2_unfiltered.rds")
+
+wthl2 <- subset(wthl2, subset = nFeature_RNA > 200 & nFeature_RNA < 7500)
+FeatureScatter(wthl2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+table(wthl2@meta.data[["orig.ident"]])
+
+### A.7.3c filtering FINAL --> MT > 1.25 < 5 & nfeatures >200 <7500 ###
+wthl2 <- readRDS("~/Desktop/10x/mm39/wthl2_unfiltered.rds")
+
+wthl2 <- subset(wthl2, subset = nFeature_RNA > 200 & nFeature_RNA < 7500 & percent.mt >1.25 & percent.mt < 5)
+FeatureScatter(wthl2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+FeatureScatter(wthl2, feature1 = "nCount_RNA", feature2 = "percent.mt", pt.size=0.2)+xlab("# UMI")+ylab("# percent.mt")
+table(wthl2@meta.data[["orig.ident"]])
+
+pdf(file=paste0("wthl2_QC_1_comparison_after_filtering_mt1.25-5_feature200-7500.pdf"))
+VlnPlot(wthl2, features = "nCount_RNA", pt.size=0)+xlab("orig.ident")+ylab("# UMI")+labs(title="# UMI")
+VlnPlot(wthl2, features = "nFeature_RNA", pt.size=0)+xlab("orig.ident")+ylab("# genes")+labs(title="# genes")
+VlnPlot(wthl2, features = "percent.mt", pt.size=0)+xlab("orig.ident")+ylab("% mito.reads")+labs(title="% mito.reads")
+FeatureScatter(wthl2, feature1 = "nCount_RNA", feature2 = "percent.mt", pt.size=0.2)+xlab("# UMI")+ylab("# percent.mt")
+FeatureScatter(wthl2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", pt.size=0.2)+xlab("# UMI")+ylab("# genes")
+dev.off()
+
+# save as seurat object 
+saveRDS(wthl2, file="~/Desktop/10x/mm39/wthl2_filtered.rds")
+#### B.Individual samples analysis and doublets removal  #####
+#### B.1 FLWT_r1 ####
+wtfl1 <- readRDS("~/Desktop/10x/mm39/wtfl1_filtered.rds")
+
+# log normalization
+wtfl1 <-NormalizeData(wtfl1)
+
+#Find 2000 most variable features
+wtfl1 <-FindVariableFeatures(wtfl1)
+top10 <- head(VariableFeatures(wtfl1), 10)
+plot1 <- VariableFeaturePlot(wtfl1)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot2
+
+
+# excluding the reporter dCas9p300 from the variable genes to avoid driving the PCA
+grep ("dCas9p300", wtfl1@assays[["RNA"]]@var.features)
+wtfl1@assays[["RNA"]]@var.features <- grep ("dCas9p300", wtfl1@assays[["RNA"]]@var.features, invert = TRUE, value=TRUE)
+
+length(VariableFeatures(wtfl1))
+
+#scaling
+wtfl1 <-ScaleData(wtfl1)
+
+#pca
+wtfl1 <-RunPCA(wtfl1,npcs = 50)
+
+
+#UMAP
+wtfl1 <-RunUMAP(wtfl1,dims = 1:50)
+DimPlot(wtfl1, reduction = "umap", label = FALSE)
+
+#Doublet Finder
+temp1fl <- paramSweep_v3(wtfl1, PCs = 1:50, sct = FALSE)
+temp2fl <- summarizeSweep(temp1fl, GT = FALSE)
+temp3fl <- find.pK(temp2fl) # BCmetric: look for pK value with highest metric score in temp2
+as.numeric(as.character(temp3fl$pK))
+
+round(0.025*ncol(wtfl1)) #nEXp
+
+wtfl1 <- doubletFinder_v3(wtfl1, PCs = 1:50, pN = 0.25, pK =0.18, nExp =93 , reuse.pANN = FALSE, sct = FALSE)
+head(wtfl1@meta.data)
+table(wtfl1@meta.data$DF.classifications_0.25_0.18_93)
+
+pdf(file=paste0("wtfl1_UMAP_doubletfinder.pdf"))
+DimPlot(wtfl1, reduction = "umap", label = FALSE)
+FeatureScatter(wtfl1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "DF.classifications_0.25_0.18_93")
+DimPlot(object = wtfl1, reduction = "umap", group.by = "DF.classifications_0.25_0.18_93", split.by = "DF.classifications_0.25_0.18_93")
+dev.off()
+
+wtfl1.singlets <- subset(x=wtfl1, subset =DF.classifications_0.25_0.18_93 == "Singlet")
+
+FeatureScatter(wtfl1.singlets, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "DF.classifications_0.25_0.18_93")
+DimPlot(wtfl1.singlets, reduction = "umap", label = FALSE)
+
+summary(wtfl1@meta.data)
+summary(wtfl1.singlets@meta.data)
+
+
+#### B.2 FLWT_r3 ####
+wtfl3 <- readRDS("~/Desktop/10x/mm39/wtfl3_filtered.rds")
+
+# log normalization
+wtfl3 <-NormalizeData(wtfl3)
+
+#Find 2000 most variable features
+wtfl3 <-FindVariableFeatures(wtfl3)
+top10 <- head(VariableFeatures(wtfl3), 10)
+plot1 <- VariableFeaturePlot(wtfl3)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot2
+
+
+# excluding the reporter Pitx1 from the variable genes to avoid driving the PCA
+grep ("dCas9p300", wtfl3@assays[["RNA"]]@var.features)
+wtfl3@assays[["RNA"]]@var.features <- grep ("dCas9p300", wtfl3@assays[["RNA"]]@var.features, invert = TRUE, value=TRUE)
+
+
+length(VariableFeatures(wtfl3))
+
+#scaling
+wtfl3 <-ScaleData(wtfl3)
+
+#pca
+wtfl3 <-RunPCA(wtfl3,npcs = 50)
+
+pdf(file=paste0("wtfl3_PCA.pdf"))
+DimPlot(wtfl3, reduction = "pca", label = FALSE)
+VizDimLoadings(wtfl3, dims = 1:2, reduction = "pca")
+ElbowPlot(wtfl3, ndims = 50, reduction = "pca")
+dev.off()
+
+#UMAP
+wtfl3 <-RunUMAP(wtfl3,dims = 1:50)
+DimPlot(wtfl3, reduction = "umap", label = FALSE)
+
+#Doublet Finder
+temp1fl <- paramSweep_v3(wtfl3, PCs = 1:50, sct = FALSE)
+temp2fl <- summarizeSweep(temp1fl, GT = FALSE)
+temp3fl <- find.pK(temp2fl) # BCmetric: look for pK value with highest metric score in temp2
+round(0.025*ncol(wtfl3)) #nEXp
+as.numeric(as.character(temp3fl$pK))
+
+
+
+wtfl3 <- doubletFinder_v3(wtfl3, PCs = 1:50, pN = 0.25, pK =0.19, nExp =114, reuse.pANN = FALSE, sct = FALSE)
+head(wtfl3@meta.data)
+table(wtfl3@meta.data$DF.classifications_0.25_0.19_114)
+
+pdf(file=paste0("wtfl3_UMAP_doubletfinder.pdf"))
+DimPlot(wtfl3, reduction = "umap", label = FALSE)
+FeatureScatter(wtfl3, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "DF.classifications_0.25_0.19_114")
+DimPlot(object = wtfl3, reduction = "umap", group.by = "DF.classifications_0.25_0.19_114", split.by = "DF.classifications_0.25_0.19_114")
+dev.off()
+
+wtfl3.singlets <- subset(x=wtfl3, subset =DF.classifications_0.25_0.19_114 == "Singlet")
+
+FeatureScatter(wtfl3.singlets, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "DF.classifications_0.25_0.19_114")
+DimPlot(wtfl3.singlets, reduction = "umap", label = FALSE)
+
+summary(wtfl3@meta.data)
+summary(wtfl3.singlets@meta.data)
+
+# save as seurat object 
+saveRDS(wtfl3.singlets, file="~/Desktop/10x/mm39/wtfl3_singlets.rds")
+
+#### B.3 flinv_r1 ####
+flinv1 <- readRDS("~/Desktop/10x/mm39/flinv1_filtered.rds")
+
+# log normalization
+flinv1 <-NormalizeData(flinv1)
+
+#Find 2000 most variable features
+flinv1 <-FindVariableFeatures(flinv1)
+top10 <- head(VariableFeatures(flinv1), 10)
+plot1 <- VariableFeaturePlot(flinv1)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot2
+
+
+# excluding the reporter dCas9p300 from the variable genes to avoid driving the PCA
+grep ("dCas9p300", flinv1@assays[["RNA"]]@var.features)
+flinv1@assays[["RNA"]]@var.features <- grep ("dCas9p300", flinv1@assays[["RNA"]]@var.features, invert = TRUE, value=TRUE)
+
+length(VariableFeatures(flinv1))
+
+#scaling
+flinv1 <-ScaleData(flinv1)
+
+#pca
+flinv1 <-RunPCA(flinv1,npcs = 50)
+
+pdf(file=paste0("flinv1_PCA.pdf"))
+DimPlot(flinv1, reduction = "pca", label = FALSE)
+VizDimLoadings(flinv1, dims = 1:2, reduction = "pca")
+ElbowPlot(flinv1, ndims = 50, reduction = "pca")
+dev.off()
+
+#UMAP
+flinv1 <-RunUMAP(flinv1,dims = 1:50)
+DimPlot(flinv1, reduction = "umap", label = FALSE)
+
+#Doublet Finder
+temp1fl <- paramSweep_v3(flinv1, PCs = 1:50, sct = FALSE)
+temp2fl <- summarizeSweep(temp1fl, GT = FALSE)
+temp3fl <- find.pK(temp2fl) # BCmetric: look for pK value with highest metric score in temp2
+
+#if NULL
+as.numeric(as.character(temp3fl$pK))
+
+round(0.025*ncol(flinv1)) #nEXp
+
+flinv1 <- doubletFinder_v3(flinv1, PCs = 1:50, pN = 0.25, pK =0.3, nExp =89, reuse.pANN = FALSE, sct = FALSE)
+head(flinv1@meta.data)
+table(flinv1@meta.data$DF.classifications_0.25_0.3_89)
+
+pdf(file=paste0("flinv1_UMAP_doubletfinder.pdf"))
+DimPlot(flinv1, reduction = "umap", label = FALSE)
+FeatureScatter(flinv1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "DF.classifications_0.25_0.3_89")
+DimPlot(object = flinv1, reduction = "umap", group.by = "DF.classifications_0.25_0.3_89", split.by = "DF.classifications_0.25_0.3_89")
+dev.off()
+
+flinv1.singlets <- subset(x=flinv1, subset =DF.classifications_0.25_0.3_89 == "Singlet")
+
+FeatureScatter(flinv1.singlets, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "DF.classifications_0.25_0.3_89")
+DimPlot(flinv1.singlets, reduction = "umap", label = FALSE)
+
+summary(flinv1@meta.data)
+summary(flinv1.singlets@meta.data)
+
+# save as seurat object 
+saveRDS(flinv1.singlets, file="~/Desktop/10x/mm39/flinv1_singlets.rds")
+
+#### B.4 flinv_r2 ####
+flinv2 <- readRDS("~/Desktop/10x/mm39/flinv2_filtered.rds")
+
+# log normalization
+flinv2 <-NormalizeData(flinv2)
+
+#Find 2000 most variable features
+flinv2 <-FindVariableFeatures(flinv2)
+top10 <- head(VariableFeatures(flinv2), 10)
+plot1 <- VariableFeaturePlot(flinv2)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot2
+
+
+# excluding the reporter dCas9p300 from the variable genes to avoid driving the PCA
+grep ("dCas9p300", flinv2@assays[["RNA"]]@var.features)
+flinv2@assays[["RNA"]]@var.features <- grep ("dCas9p300", flinv2@assays[["RNA"]]@var.features, invert = TRUE, value=TRUE)
+
+
+length(VariableFeatures(flinv2))
+
+#scaling
+flinv2 <-ScaleData(flinv2)
+
+#pca
+flinv2 <-RunPCA(flinv2,npcs = 50)
+
+pdf(file=paste0("flinv2_PCA.pdf"))
+DimPlot(flinv2, reduction = "pca", label = FALSE)
+VizDimLoadings(flinv2, dims = 1:2, reduction = "pca")
+ElbowPlot(flinv2, ndims = 50, reduction = "pca")
+dev.off()
+
+#UMAP
+flinv2 <-RunUMAP(flinv2,dims = 1:50)
+DimPlot(flinv2, reduction = "umap", label = FALSE)
+
+#Doublet Finder
+temp1fl <- paramSweep_v3(flinv2, PCs = 1:50, sct = FALSE)
+temp2fl <- summarizeSweep(temp1fl, GT = FALSE)
+temp3fl <- find.pK(temp2fl) # BCmetric: look for pK value with highest metric score in temp2
+
+as.numeric(as.character(temp3fl$pK))
+
+round(0.025*ncol(flinv2)) #nEXp
+
+flinv2 <- doubletFinder_v3(flinv2, PCs = 1:50, pN = 0.25, pK =0.21, nExp =85, reuse.pANN = FALSE, sct = FALSE)
+head(flinv2@meta.data)
+table(flinv2@meta.data$DF.classifications_0.25_0.21_85)
+
+pdf(file=paste0("flinv2_UMAP_doubletfinder.pdf"))
+DimPlot(flinv2, reduction = "umap", label = FALSE)
+FeatureScatter(flinv2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "DF.classifications_0.25_0.21_85")
+DimPlot(object = flinv2, reduction = "umap", group.by = "DF.classifications_0.25_0.21_85", split.by = "DF.classifications_0.25_0.21_85")
+dev.off()
+
+flinv2.singlets <- subset(x=flinv2, subset =DF.classifications_0.25_0.21_85 == "Singlet")
+
+FeatureScatter(flinv2.singlets, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "DF.classifications_0.25_0.21_85")
+DimPlot(flinv2.singlets, reduction = "umap", label = FALSE)
+
+summary(flinv2@meta.data)
+summary(flinv2.singlets@meta.data)
+
+# save as seurat object 
+saveRDS(flinv2.singlets, file="~/Desktop/10x/mm39/flinv2_singlets.rds")
+
+#### B.5 fldcas9 ####
+fldcas9 <- readRDS("~/Desktop/10x/mm39/fldcas9_filtered.rds")
+
+# log normalization
+fldcas9 <-NormalizeData(fldcas9)
+
+#Find 2000 most variable features
+fldcas9 <-FindVariableFeatures(fldcas9)
+top10 <- head(VariableFeatures(fldcas9), 10)
+plot1 <- VariableFeaturePlot(fldcas9)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot2
+
+
+# excluding the reporter Pitx1 from the variable genes to avoid driving the PCA
+grep ("dCas9P300-bGHpA", fldcas9@assays[["RNA"]]@var.features)
+fldcas9@assays[["RNA"]]@var.features <- grep ("dCas9P300-bGHpA", fldcas9@assays[["RNA"]]@var.features, invert = TRUE, value=TRUE)
+
+
+length(VariableFeatures(fldcas9))
+
+#scaling
+fldcas9 <-ScaleData(fldcas9)
+
+#pca
+fldcas9 <-RunPCA(fldcas9,npcs = 50)
+
+pdf(file=paste0("fldcas9_PCA.pdf"))
+DimPlot(fldcas9, reduction = "pca", label = FALSE)
+VizDimLoadings(fldcas9, dims = 1:2, reduction = "pca")
+ElbowPlot(fldcas9, ndims = 50, reduction = "pca")
+dev.off()
+
+#UMAP
+fldcas9 <-RunUMAP(fldcas9,dims = 1:50)
+DimPlot(fldcas9, reduction = "umap", label = FALSE)
+
+#Doublet Finder
+temp1fl <- paramSweep_v3(fldcas9, PCs = 1:50, sct = FALSE)
+temp2fl <- summarizeSweep(temp1fl, GT = FALSE)
+temp3fl <- find.pK(temp2fl) # BCmetric: look for pK value with highest metric score in temp2
+
+as.numeric(as.character(temp3fl$pK))
+
+round(0.025*ncol(fldcas9)) #nEXp
+
+fldcas9 <- doubletFinder_v3(fldcas9, PCs = 1:50, pN = 0.25, pK =0.1, nExp =159, reuse.pANN = FALSE, sct = FALSE)
+head(fldcas9@meta.data)
+table(fldcas9@meta.data$DF.classifications_0.25_0.1_159)
+
+pdf(file=paste0("fldcas9_UMAP_doubletfinder.pdf"))
+DimPlot(fldcas9, reduction = "umap", label = FALSE)
+FeatureScatter(fldcas9, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "DF.classifications_0.25_0.1_159")
+DimPlot(object = fldcas9, reduction = "umap", group.by = "DF.classifications_0.25_0.1_159", split.by = "DF.classifications_0.25_0.1_159")
+dev.off()
+
+fldcas9.singlets <- subset(x=fldcas9, subset =DF.classifications_0.25_0.1_159 == "Singlet")
+
+FeatureScatter(fldcas9.singlets, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "DF.classifications_0.25_0.1_159")
+DimPlot(fldcas9.singlets, reduction = "umap", label = FALSE)
+
+summary(fldcas9@meta.data)
+summary(fldcas9.singlets@meta.data)
+
+# save as seurat object 
+saveRDS(fldcas9.singlets, file="~/Desktop/10x/mm39/fldcas9_singlets.rds")
+
+#### B.6 HL_WT_r1 ####
+wthl1 <- readRDS("~/Desktop/10x/mm39/wthl1_filtered.rds")
+
+# log normalization
+wthl1 <-NormalizeData(wthl1)
+
+#Find 2000 most variable features
+wthl1 <-FindVariableFeatures(wthl1)
+top10 <- head(VariableFeatures(wthl1), 10)
+plot1 <- VariableFeaturePlot(wthl1)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot2
+
+# excluding the reporter Pitx1 from the variable genes to avoid driving the PCA
+grep ("dCas9P300-bGHpA", wthl1@assays[["RNA"]]@var.features)
+wthl1@assays[["RNA"]]@var.features <- grep ("dCas9P300-bGHpA", wthl1@assays[["RNA"]]@var.features, invert = TRUE, value=TRUE)
+
+
+length(VariableFeatures(wthl1))
+
+#scaling
+wthl1 <-ScaleData(wthl1)
+
+#pca
+wthl1 <-RunPCA(wthl1,npcs = 50)
+
+pdf(file=paste0("wthl1_PCA.pdf"))
+DimPlot(wthl1, reduction = "pca", label = FALSE)
+VizDimLoadings(wthl1, dims = 1:2, reduction = "pca")
+ElbowPlot(wthl1, ndims = 50, reduction = "pca")
+dev.off()
+
+#UMAP
+wthl1 <-RunUMAP(wthl1,dims = 1:50)
+DimPlot(wthl1, reduction = "umap", label = FALSE)
+
+#Doublet Finder
+temp1fl <- paramSweep_v3(wthl1, PCs = 1:50, sct = FALSE)
+temp2fl <- summarizeSweep(temp1fl, GT = FALSE)
+temp3fl <- find.pK(temp2fl) # BCmetric: look for pK value with highest metric score in temp2, from Plot get the higherst point and count 
+# how many points in it is
+as.numeric(as.character(temp3fl$pK)) #count from the list which one is the highest point, this is your pK for later
+
+round(0.025*ncol(wthl1)) # this will give nEXp for later
+
+wthl1 <- doubletFinder_v3(wthl1, PCs = 1:50, pN = 0.25, pK =0.13, nExp =104, reuse.pANN = FALSE, sct = FALSE)
+head(wthl1@meta.data)
+table(wthl1@meta.data$DF.classifications_0.25_0.13_104)
+
+pdf(file=paste0("wthl1_UMAP_doubletfinder.pdf"))
+DimPlot(wthl1, reduction = "umap", label = FALSE)
+FeatureScatter(wthl1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "DF.classifications_0.25_0.13_104")
+DimPlot(object = wthl1, reduction = "umap", group.by = "DF.classifications_0.25_0.13_104", split.by = "DF.classifications_0.25_0.13_104")
+dev.off()
+
+wthl1.singlets <- subset(x=wthl1, subset =DF.classifications_0.25_0.13_104 == "Singlet")
+
+FeatureScatter(wthl1.singlets, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "DF.classifications_0.25_0.13_104")
+DimPlot(wthl1.singlets, reduction = "umap", label = FALSE)
+
+summary(wthl1@meta.data)
+summary(wthl1.singlets@meta.data)
+
+# save as seurat object 
+saveRDS(wthl1.singlets, file="~/Desktop/10x/mm39/wthl1_singlets.rds")
+#### B.7 HL_WT_r2 ####
+wthl2 <- readRDS("~/Desktop/10x/mm39/wthl2_filtered.rds")
+
+# log normalization
+wthl2 <-NormalizeData(wthl2)
+
+#Find 2000 most variable features
+wthl2 <-FindVariableFeatures(wthl2)
+top10 <- head(VariableFeatures(wthl2), 10)
+plot1 <- VariableFeaturePlot(wthl2)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot2
+
+# excluding the reporter Pitx1 from the variable genes to avoid driving the PCA
+grep ("dCas9P300-bGHpA", wthl2@assays[["RNA"]]@var.features)
+wthl2@assays[["RNA"]]@var.features <- grep ("dCas9P300-bGHpA", wthl2@assays[["RNA"]]@var.features, invert = TRUE, value=TRUE)
+
+
+length(VariableFeatures(wthl2))
+
+#scaling
+wthl2 <-ScaleData(wthl2)
+
+#pca
+wthl2 <-RunPCA(wthl2,npcs = 50)
+
+pdf(file=paste0("wthl2_PCA.pdf"))
+DimPlot(wthl2, reduction = "pca", label = FALSE)
+VizDimLoadings(wthl2, dims = 1:2, reduction = "pca")
+ElbowPlot(wthl2, ndims = 50, reduction = "pca")
+dev.off()
+
+#UMAP
+wthl2 <-RunUMAP(wthl2, dims = 1:50)
+DimPlot(wthl2, reduction = "umap", label = FALSE)
+
+#Doublet Finder
+temp1fl <- paramSweep_v3(wthl2, PCs = 1:50, sct = FALSE)
+temp2fl <- summarizeSweep(temp1fl, GT = FALSE)
+temp3fl <- find.pK(temp2fl) # BCmetric: look for pK value with highest metric score in temp2
+
+as.numeric(as.character(temp3fl$pK))
+
+round(0.025*ncol(wthl2)) #nEXp
+
+wthl2 <- doubletFinder_v3(wthl2, PCs = 1:50, pN = 0.25, pK =0.06, nExp =123, reuse.pANN = FALSE, sct = FALSE)
+head(wthl2@meta.data)
+table(wthl2@meta.data$DF.classifications_0.25_0.06_123)
+
+pdf(file=paste0("wthl2_UMAP_doubletfinder.pdf"))
+DimPlot(wthl2, reduction = "umap", label = FALSE)
+FeatureScatter(wthl2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "DF.classifications_0.25_0.06_123")
+DimPlot(object = wthl2, reduction = "umap", group.by = "DF.classifications_0.25_0.06_123", split.by = "DF.classifications_0.25_0.06_123")
+dev.off()
+
+wthl2.singlets <- subset(x=wthl2, subset =DF.classifications_0.25_0.06_123 == "Singlet")
+
+FeatureScatter(wthl2.singlets, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "DF.classifications_0.25_0.06_123")
+DimPlot(wthl2.singlets, reduction = "umap", label = FALSE)
+
+summary(wthl2@meta.data)
+summary(wthl2.singlets@meta.data)
+
+# save as seurat object 
+saveRDS(wthl2.singlets, file="~/Desktop/10x/mm39/wthl2_singlets.rds")
+#### C.QC check for dCas9 genes & variablefeatures annotation ####
+#### C.1 -> fldcas9.singlets ####
+fldcas9.singlets <- readRDS("~/Desktop/10x/mm39/fldcas9_singlets.rds")
+
+# flag and count dCas9P300-bGHpA & Shox2 expressing cells
+dcas9_counts <- FetchData(fldcas9.singlets, vars="dCas9P300-bGHpA", slot="counts")
+Shox2_counts <- FetchData(fldcas9.singlets, vars="Shox2", slot="counts")
+Pitx1_counts <- FetchData(fldcas9.singlets, vars="Pitx1", slot="counts")
+
+pdf(file=paste0("fldcas9.singlets_dCas9P300-bGHpA_Shox2_counts_QC.pdf"))
+ggplot(data=Shox2_counts, aes(Shox2_counts$`Shox2`)) + geom_histogram(binwidth = 0.5) + labs(x="Shox2")
+ggplot(data=dcas9_counts, aes(dcas9_counts$`dCas9P300-bGHpA`)) + geom_histogram(binwidth = 0.5) + labs(x="dCas9P300-bGHpA")
+ggplot(data=Pitx1_counts, aes(Pitx1_counts$`Pitx1`)) + geom_histogram(binwidth = 0.5) + labs(x="Pitx1")
+ggplot(data=Pitx1_counts, aes(Pitx1_counts$`Pitx1`)) + xlim(0,20) + geom_histogram(binwidth = 0.5) + labs(x="Pitx1 UMIs") 
+ggplot(data=Shox2_counts, aes(Shox2_counts$`Shox2`)) + xlim(0,20) + geom_histogram(binwidth = 0.5) + labs(x="Shox2 UMIs") 
+ggplot(data=dcas9_counts, aes(dcas9_counts$`dCas9P300-bGHpA`)) + xlim(0,20) + geom_histogram(binwidth = 0.5) + labs(x="dCas9P300-bGHpA UMIs") 
+dev.off()
+
+#Pitx1_counts
+Pitx1_selected_cells <- WhichCells(fldcas9.singlets, expression = `Pitx1`>=1, slot="counts")
+length(Pitx1_selected_cells)
+fldcas9.singlets[["Pitx1_positive"]] <- colnames(fldcas9.singlets) %in% Pitx1_selected_cells
+
+#dCas9P300-bGHpA_counts             
+dCas9P300bGHpA_selected_cells <- WhichCells(fldcas9.singlets, expression = `dCas9P300-bGHpA` >=1, slot="counts")
+length(dCas9P300bGHpA_selected_cells)
+fldcas9.singlets[["dCas9P300bGHpA_positive"]] <- colnames(fldcas9.singlets) %in% dCas9P300bGHpA_selected_cells
+
+#Shox2_counts
+Shox2_selected_cells <- WhichCells(fldcas9.singlets, expression = Shox2_counts$`Shox2`>=1, slot="counts")
+length(Shox2_selected_cells)
+fldcas9.singlets[["Shox2_positive"]] <- colnames(fldcas9.singlets) %in% Shox2_selected_cells
+
+#Positive and negative distribution
+Shox2_pos_cells <- WhichCells(fldcas9.singlets, expression = `Shox2`>=1, slot="counts")
+Shox2_pos <- length(Shox2_pos_cells)
+Shox2_neg_cells <- WhichCells(fldcas9.singlets, expression = `Shox2`<1, slot="counts")
+Shox2_neg <- length(Shox2_neg_cells)
+dCas9P300bGHpA_pos_cells <- WhichCells(fldcas9.singlets, expression = `dCas9P300-bGHpA`>=1, slot="counts")
+dCas9P300bGHpA_pos <- length(dCas9P300bGHpA_pos_cells)
+dCas9P300bGHpA_neg_cells <- WhichCells(fldcas9.singlets, expression = `dCas9P300-bGHpA`<1, slot="counts")
+dCas9P300bGHpA_neg <- length(dCas9P300bGHpA_neg_cells)
+Pitx1_pos_cells <- WhichCells(fldcas9.singlets, expression = `Pitx1`>=1, slot="counts")
+Pitx1_pos <- length(Pitx1_pos_cells)
+Pitx1_neg_cells <- WhichCells(fldcas9.singlets, expression = `Pitx1`<1, slot="counts")
+Pitx1_neg <- length(Pitx1_neg_cells)
+
+Name <- c("Shox2","dCas9P300-bGHpA","Pitx1")
+Positive <- c(Shox2_pos,dCas9P300bGHpA_pos,Pitx1_pos)
+Negative <- c(Shox2_neg,dCas9P300bGHpA_neg,Pitx1_neg)
+df1_fldcas9.singlets <- data.frame(Name,Positive,Negative)
+write.csv(df1_fldcas9.singlets, file = "df1_fldcas9.singlets.csv")
+
+dCas9P300bGHpAneg_Shox2pos_cells <- WhichCells(fldcas9.singlets, cells = Shox2_pos_cells , expression = `dCas9P300-bGHpA` <1, slot="counts")
+dCas9P300bGHpAneg_Shox2pos <- length(dCas9P300bGHpAneg_Shox2pos_cells)
+
+dCas9P300bGHpAneg_Shox2neg_cells <- WhichCells(fldcas9.singlets, cells = Shox2_neg_cells , expression = `dCas9P300-bGHpA` <1, slot="counts")
+dCas9P300bGHpAneg_Shox2neg <- length(dCas9P300bGHpAneg_Shox2neg_cells)
+
+dCas9P300bGHpApos_Shox2pos_cells <- WhichCells(fldcas9.singlets, cells = Shox2_pos_cells , expression = `dCas9P300-bGHpA` >=1, slot="counts")
+dCas9P300bGHpApos_Shox2pos <- length(dCas9P300bGHpApos_Shox2pos_cells)
+
+dCas9P300bGHpApos_Shox2neg_cells <- WhichCells(fldcas9.singlets, cells = Shox2_neg_cells , expression = `dCas9P300-bGHpA` >=1, slot="counts")
+dCas9P300bGHpApos_Shox2neg <- length(dCas9P300bGHpApos_Shox2neg_cells)
+
+dCas9P300bGHpApos_Shox2pos_Pitx1pos_cells <- WhichCells(fldcas9.singlets, cells = dCas9P300bGHpApos_Shox2pos_cells, expression = `Pitx1` >=1, slot="counts")
+dCas9P300bGHpApos_Shox2pos_Pitx1pos <- length(dCas9P300bGHpApos_Shox2pos_Pitx1pos_cells)
+
+dCas9P300bGHpAneg_Shox2pos_Pitx1pos_cells <- WhichCells(fldcas9.singlets, cells = dCas9P300bGHpAneg_Shox2pos_cells, expression = `Pitx1` >=1, slot="counts")
+dCas9P300bGHpAneg_Shox2pos_Pitx1pos <- length(dCas9P300bGHpAneg_Shox2pos_Pitx1pos_cells)
+
+dCas9P300bGHpApos_Shox2neg_Pitx1pos_cells <- WhichCells(fldcas9.singlets, cells = dCas9P300bGHpApos_Shox2neg_cells, expression = `Pitx1` >=1, slot="counts")
+dCas9P300bGHpApos_Shox2neg_Pitx1pos <- length(dCas9P300bGHpApos_Shox2neg_Pitx1pos_cells)
+
+dCas9P300bGHpAneg_Shox2neg_Pitx1pos_cells <- WhichCells(fldcas9.singlets, cells = dCas9P300bGHpAneg_Shox2neg_cells, expression = `Pitx1` >=1, slot="counts")
+dCas9P300bGHpAneg_Shox2neg_Pitx1pos <- length(dCas9P300bGHpAneg_Shox2neg_Pitx1pos_cells)
+
+dCas9P300bGHpApos_Shox2pos_Pitx1neg_cells <- WhichCells(fldcas9.singlets, cells = dCas9P300bGHpApos_Shox2pos_cells, expression = `Pitx1` <1, slot="counts")
+dCas9P300bGHpApos_Shox2pos_Pitx1neg <- length(dCas9P300bGHpApos_Shox2pos_Pitx1neg_cells)
+
+dCas9P300bGHpAneg_Shox2pos_Pitx1neg_cells <- WhichCells(fldcas9.singlets, cells = dCas9P300bGHpAneg_Shox2pos_cells, expression = `Pitx1` <1, slot="counts")
+dCas9P300bGHpAneg_Shox2pos_Pitx1neg <- length(dCas9P300bGHpAneg_Shox2pos_Pitx1neg_cells)
+
+dCas9P300bGHpApos_Shox2neg_Pitx1neg_cells <- WhichCells(fldcas9.singlets, cells = dCas9P300bGHpApos_Shox2neg_cells, expression = `Pitx1` <1, slot="counts")
+dCas9P300bGHpApos_Shox2neg_Pitx1neg <- length(dCas9P300bGHpApos_Shox2neg_Pitx1neg_cells)
+
+dCas9P300bGHpAneg_Shox2neg_Pitx1neg_cells <- WhichCells(fldcas9.singlets, cells = dCas9P300bGHpAneg_Shox2neg_cells, expression = `Pitx1` <1, slot="counts")
+dCas9P300bGHpAneg_Shox2neg_Pitx1neg <- length(dCas9P300bGHpAneg_Shox2neg_Pitx1neg_cells)
+
+sample1 <- c("dCas9P300bGHpAneg_Shox2pos", "dCas9P300bGHpAneg_Shox2neg","dCas9P300bGHpApos_Shox2pos","dCas9P300bGHpApos_Shox2neg")
+n_cells1 <- c(dCas9P300bGHpAneg_Shox2pos, dCas9P300bGHpAneg_Shox2neg, dCas9P300bGHpApos_Shox2pos,dCas9P300bGHpApos_Shox2neg)
+
+sample2 <- c("dCas9P300bGHpAneg_Shox2pos_Pitx1pos","dCas9P300bGHpAneg_Shox2neg_Pitx1pos","dCas9P300bGHpApos_Shox2pos_Pitx1pos", "dCas9P300bGHpApos_Shox2neg_Pitx1pos")
+n_cells2 <- c(dCas9P300bGHpAneg_Shox2pos_Pitx1pos,dCas9P300bGHpAneg_Shox2neg_Pitx1pos,dCas9P300bGHpApos_Shox2pos_Pitx1pos,dCas9P300bGHpApos_Shox2neg_Pitx1pos)
+
+sample3 <- c("dCas9P300bGHpAneg_Shox2pos_Pitx1neg","dCas9P300bGHpAneg_Shox2neg_Pitx1neg","dCas9P300bGHpApos_Shox2pos_Pitx1neg", "dCas9P300bGHpApos_Shox2neg_Pitx1neg")
+n_cells3 <- c(dCas9P300bGHpAneg_Shox2pos_Pitx1neg,dCas9P300bGHpAneg_Shox2neg_Pitx1neg,dCas9P300bGHpApos_Shox2pos_Pitx1neg,dCas9P300bGHpApos_Shox2neg_Pitx1neg)
+
+df2_fldcas9.singlets <- data.frame(sample1,n_cells1,sample2,n_cells2,sample3,n_cells3)
+write.csv(df2_fldcas9.singlets, file = "df2_fldcas9.singlets.csv")
+
+d1 <- data.frame(dCas9P300bGHpApos_Shox2pos_Pitx1pos_cells, "dCas9P300bGHpApos_Shox2pos_Pitx1pos_cells", "A")
+colnames(d1) <- c("cells","gene_class","letter")
+d2 <- data.frame(dCas9P300bGHpAneg_Shox2pos_Pitx1pos_cells, "dCas9P300bGHpAneg_Shox2pos_Pitx1pos_cells", "B")
+colnames(d2) <- c("cells","gene_class","letter")
+d3 <- data.frame(dCas9P300bGHpApos_Shox2neg_Pitx1pos_cells, "dCas9P300bGHpApos_Shox2neg_Pitx1pos_cells", "C")
+colnames(d3) <- c("cells","gene_class","letter")
+d4 <- data.frame(dCas9P300bGHpAneg_Shox2neg_Pitx1pos_cells, "dCas9P300bGHpAneg_Shox2neg_Pitx1pos_cells", "D")
+colnames(d4) <- c("cells","gene_class","letter")
+d5 <- data.frame(dCas9P300bGHpApos_Shox2pos_Pitx1neg_cells, "dCas9P300bGHpApos_Shox2pos_Pitx1neg_cells", "E")
+colnames(d5) <- c("cells","gene_class","letter")
+d6 <- data.frame(dCas9P300bGHpAneg_Shox2pos_Pitx1neg_cells, "dCas9P300bGHpAneg_Shox2pos_Pitx1neg_cells", "F")
+colnames(d6) <- c("cells","gene_class","letter")
+d7 <- data.frame(dCas9P300bGHpApos_Shox2neg_Pitx1neg_cells, "dCas9P300bGHpApos_Shox2neg_Pitx1neg_cells", "G")
+colnames(d7) <- c("cells","gene_class","letter")
+d8 <- data.frame(dCas9P300bGHpAneg_Shox2neg_Pitx1neg_cells, "dCas9P300bGHpAneg_Shox2neg_Pitx1neg_cells", "H")
+colnames(d8) <- c("cells","gene_class","letter")
+
+cells_class <- rbind(d1,d2,d3,d4,d5,d6,d7,d8)
+row.names(x = cells_class) <- cells_class$cells
+cells_class2 <- cells_class[,c("gene_class","letter")]
+head(cells_class2)
+
+fldcas9.singlets[[colnames(x = cells_class2)]] <- cells_class2
+head(fldcas9.singlets@meta.data)
+
+pdf(file=paste0("fldcas9.singlets_Pitx1_dsmCherry_Shox2_dCas9P300bGHpA_proportions_horizontal.pdf"), width=15, paper = "USr")
+
+DimPlot(fldcas9.singlets, reduction = "umap",label = FALSE, group.by = "gene_class")
+VlnPlot(object = fldcas9.singlets, assay = "RNA", features = "Shox2", group.by = "gene_class",
+        pt.size = 0.1) 
+VlnPlot(object = fldcas9.singlets, assay = "RNA", features = "Pitx1", group.by = "gene_class",
+        pt.size = 0.1) 
+VlnPlot(object = fldcas9.singlets, assay = "RNA", features = "dCas9P300-bGHpA", group.by = "gene_class",
+        pt.size = 0.1) 
+
+t1 <- table(fldcas9.singlets@meta.data$gene_class)
+total <- sum(t1)
+total
+t1 <- as.data.frame(t1)
+t1
+t1$ratio <- t1[,2]/total
+sum(t1$ratio)
+
+ggplot(t1, aes(fill= Var1, x=Var1,y=Freq)) + 
+  geom_bar(position="dodge", stat = "identity") + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust=1))+
+  geom_text(aes(label=Freq), vjust=-0.3, color="black", size=3.5)
+
+ggplot(t1, aes(fill= Var1, x=Var1,y=ratio)) + 
+  geom_bar(position="dodge", stat = "identity") + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust=1))+
+  geom_text(aes(label = sprintf("%0.2f", round(ratio, 2))), vjust=-0.3, color="black", size=3.5)
+dev.off()
+
+# save as seurat object 
+saveRDS(fldcas9.singlets, file="~/Desktop/10x/mm39/fldcas9.singlets.rds")
+
+
+
+
+#### D.1 merging of 2 WTFL replicates and pitx1+shox2 analysis #####
+wtfl1.singlets <- readRDS("~/Desktop/10x/mm39/wtfl1_singlets.rds")
+wtfl1.singlets
+summary(wtfl1.singlets@meta.data)
+table(wtfl1.singlets@meta.data$gene_class)
+
+wthl2.singlets <- readRDS("~/Desktop/10x/mm39/wthl2_singlets.rds")
+wthl2.singlets
+summary(wthl2.singlets@meta.data)
+table(wthl2.singlets@meta.data$gene_class)
+
+wtfl.merged <- merge(wtfl1.singlets, y= c(wthl2.singlets),
+                     add.cell.ids = c("wtfl1","wthl2"))
+
+wtfl.merged
+summary(wtfl.merged@meta.data)
+table(wtfl.merged$orig.ident)
+table(wtfl.merged$gene_class)    #Error: Cannot find 'gene_class' in this Seurat object
+
+
+Shox2_counts <- FetchData(wtfl.merged, vars="Shox2", slot="counts")
+Pitx1_counts <- FetchData(wtfl.merged, vars="Pitx1", slot="counts")
+
+#Pitx1_counts
+Pitx1_selected_cells <- WhichCells(wtfl.merged, expression = `Pitx1`>=1, slot="counts")
+length(Pitx1_selected_cells)
+wtfl.merged[["Pitx1_positive"]] <- colnames(wtfl.merged) %in% Pitx1_selected_cells
+
+#Shox2_counts
+Shox2_selected_cells <- WhichCells(wtfl.merged, expression = `Shox2`>=1, slot="counts")
+length(Shox2_selected_cells)
+wtfl.merged[["Shox2_positive"]] <- colnames(wtfl.merged) %in% Shox2_selected_cells
+
+#Positive and negative distribution
+Shox2_pos_cells <- WhichCells(wtfl.merged, expression = `Shox2`>=1, slot="counts")
+Shox2_pos <- length(Shox2_pos_cells)
+Shox2_neg_cells <- WhichCells(wtfl.merged, expression = `Shox2`<1, slot="counts")
+Shox2_neg <- length(Shox2_neg_cells)
+Pitx1_pos_cells <- WhichCells(wtfl.merged, expression = `Pitx1`>=1, slot="counts")
+Pitx1_pos <- length(Pitx1_pos_cells)
+Pitx1_neg_cells <- WhichCells(wtfl.merged, expression = `Pitx1`<1, slot="counts")
+Pitx1_neg <- length(Pitx1_neg_cells)
+
+Name <- c("Shox2","Pitx1")
+Positive <- c(Shox2_pos,Pitx1_pos)
+Negative <- c(Shox2_neg,Pitx1_neg)
+df1_flwt.singlets <- data.frame(Name,Positive,Negative)
+write.csv(df1_flwt.singlets, file = "df1_flwt.singlets.csv")
+
+Pitx1neg_Shox2pos_cells <- WhichCells(wtfl.merged, cells = Shox2_pos_cells , expression = `Pitx1` <1, slot="counts")
+Pitx1neg_Shox2pos <- length(Pitx1neg_Shox2pos_cells)
+
+Pitx1neg_Shox2neg_cells <- WhichCells(wtfl.merged, cells = Shox2_neg_cells , expression = `Pitx1` <1, slot="counts")
+Pitx1neg_Shox2neg <- length(Pitx1neg_Shox2neg_cells)
+
+Pitx1pos_Shox2pos_cells <- WhichCells(wtfl.merged, cells = Shox2_pos_cells , expression = `Pitx1` >=1, slot="counts")
+Pitx1pos_Shox2pos <- length(Pitx1pos_Shox2pos_cells)
+
+Pitx1pos_Shox2neg_cells <- WhichCells(wtfl.merged, cells = Shox2_neg_cells , expression = `Pitx1` >=1, slot="counts")
+Pitx1pos_Shox2neg <- length(Pitx1pos_Shox2neg_cells)
+
+sample1 <- c("Pitx1neg_Shox2pos", "Pitx1neg_Shox2neg","Pitx1pos_Shox2pos","Pitx1pos_Shox2neg")
+n_cells1 <- c(Pitx1neg_Shox2pos, Pitx1neg_Shox2neg, Pitx1pos_Shox2pos, Pitx1pos_Shox2neg)
+
+df2_wtfl.merged <- data.frame(sample1,n_cells1)
+write.csv(df2_wtfl.merged, file = "df2_wtfl.merged.singlets.csv")
+
+d1 <- data.frame(Pitx1neg_Shox2pos_cells, "Pitx1neg_Shox2pos_cells", "A")
+colnames(d1) <- c("cells","gene_class","letter")
+d2 <- data.frame(Pitx1neg_Shox2neg_cells, "Pitx1neg_Shox2neg_cells", "B")
+colnames(d2) <- c("cells","gene_class","letter")
+d3 <- data.frame(Pitx1pos_Shox2pos_cells, "Pitx1pos_Shox2pos_cells", "C")
+colnames(d3) <- c("cells","gene_class","letter")
+d4 <- data.frame(Pitx1pos_Shox2neg_cells, "Pitx1pos_Shox2neg_cells", "D")
+colnames(d4) <- c("cells","gene_class","letter")
+
+cells_class <- rbind(d1,d2,d3,d4)
+row.names(x = cells_class) <- cells_class$cells
+cells_class2 <- cells_class[,c("gene_class","letter")]
+head(cells_class2)
+
+wtfl.merged[[colnames(x = cells_class2)]] <- cells_class2
+head(wtfl.merged@meta.data)
+
+pdf(file=paste0("wtfl_merged_proportions_horizontal.pdf"), width=15, paper = "USr")
+
+DimPlot(wtfl.merged, reduction = "umap",label = FALSE, group.by = "gene_class")
+VlnPlot(object = wtfl.merged, assay = "RNA", features = "Shox2", group.by = "gene_class",
+        pt.size = 0.1) 
+VlnPlot(object = wtfl.merged, assay = "RNA", features = "Pitx1", group.by = "gene_class",
+        pt.size = 0.1) 
+
+t1 <- table(wtfl.merged@meta.data$gene_class)
+total <- sum(t1)
+total
+t1 <- as.data.frame(t1)
+t1
+t1$ratio <- t1[,2]/total
+sum(t1$ratio)
+
+ggplot(t1, aes(fill= Var1, x=Var1,y=Freq)) + 
+  geom_bar(position="dodge", stat = "identity") + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust=1))+
+  geom_text(aes(label=Freq), vjust=-0.3, color="black", size=3.5)
+
+ggplot(t1, aes(fill= Var1, x=Var1,y=ratio)) + 
+  geom_bar(position="dodge", stat = "identity") + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust=1))+
+  geom_text(aes(label = sprintf("%0.2f", round(ratio, 2))), vjust=-0.3, color="black", size=3.5)
+dev.off()
+
+saveRDS(wtfl.merged, file="~/Desktop/10x/mm39/wtfl1_3_merged_singlets.rds")
+
+
+
+
+
+
+#### D.2 merging of 2 FLInv replicates and pitx1+shox2 analysis #####
+flinv1.singlets <- readRDS("~/Desktop/10x/mm39/flinv1_singlets.rds")
+flinv1.singlets
+summary(flinv1.singlets@meta.data)
+table(flinv1.singlets@meta.data$gene_class)
+
+flinv2.singlets <- readRDS("~/Desktop/10x/mm39/flinv2_singlets.rds")
+flinv2.singlets
+summary(flinv2.singlets@meta.data)
+table(flinv2.singlets@meta.data$gene_class)
+
+flinv.merged <- merge(flinv1.singlets, y= c(flinv2.singlets),
+                      add.cell.ids = c("flinv1","flinv2"))
+
+flinv.merged
+summary(flinv.merged@meta.data)
+table(flinv.merged$orig.ident)
+table(flinv.merged$gene_class)  
+
+
+Shox2_counts <- FetchData(flinv.merged, vars="Shox2", slot="counts")
+Pitx1_counts <- FetchData(flinv.merged, vars="Pitx1", slot="counts")
+
+#Pitx1_counts
+Pitx1_selected_cells <- WhichCells(flinv.merged, expression = `Pitx1`>=1, slot="counts")
+length(Pitx1_selected_cells)
+flinv.merged[["Pitx1_positive"]] <- colnames(flinv.merged) %in% Pitx1_selected_cells
+
+#Shox2_counts
+Shox2_selected_cells <- WhichCells(flinv.merged, expression = `Shox2`>=1, slot="counts")
+length(Shox2_selected_cells)
+flinv.merged[["Shox2_positive"]] <- colnames(flinv.merged) %in% Shox2_selected_cells
+
+#Positive and negative distribution
+Shox2_pos_cells <- WhichCells(flinv.merged, expression = `Shox2`>=1, slot="counts")
+Shox2_pos <- length(Shox2_pos_cells)
+Shox2_neg_cells <- WhichCells(flinv.merged, expression = `Shox2`<1, slot="counts")
+Shox2_neg <- length(Shox2_neg_cells)
+Pitx1_pos_cells <- WhichCells(flinv.merged, expression = `Pitx1`>=1, slot="counts")
+Pitx1_pos <- length(Pitx1_pos_cells)
+Pitx1_neg_cells <- WhichCells(flinv.merged, expression = `Pitx1`<1, slot="counts")
+Pitx1_neg <- length(Pitx1_neg_cells)
+
+Name <- c("Shox2","Pitx1")
+Positive <- c(Shox2_pos,Pitx1_pos)
+Negative <- c(Shox2_neg,Pitx1_neg)
+df1_flwt.singlets <- data.frame(Name,Positive,Negative)
+write.csv(df1_flwt.singlets, file = "df1_flinv.singlets.csv")
+
+Pitx1neg_Shox2pos_cells <- WhichCells(flinv.merged, cells = Shox2_pos_cells , expression = `Pitx1` <1, slot="counts")
+Pitx1neg_Shox2pos <- length(Pitx1neg_Shox2pos_cells)
+
+Pitx1neg_Shox2neg_cells <- WhichCells(flinv.merged, cells = Shox2_neg_cells , expression = `Pitx1` <1, slot="counts")
+Pitx1neg_Shox2neg <- length(Pitx1neg_Shox2neg_cells)
+
+Pitx1pos_Shox2pos_cells <- WhichCells(flinv.merged, cells = Shox2_pos_cells , expression = `Pitx1` >=1, slot="counts")
+Pitx1pos_Shox2pos <- length(Pitx1pos_Shox2pos_cells)
+
+Pitx1pos_Shox2neg_cells <- WhichCells(flinv.merged, cells = Shox2_neg_cells , expression = `Pitx1` >=1, slot="counts")
+Pitx1pos_Shox2neg <- length(Pitx1pos_Shox2neg_cells)
+
+sample1 <- c("Pitx1neg_Shox2pos", "Pitx1neg_Shox2neg","Pitx1pos_Shox2pos","Pitx1pos_Shox2neg")
+n_cells1 <- c(Pitx1neg_Shox2pos, Pitx1neg_Shox2neg, Pitx1pos_Shox2pos, Pitx1pos_Shox2neg)
+
+df2_flinv.merged <- data.frame(sample1,n_cells1)
+write.csv(df2_flinv.merged, file = "df2_flinv.merged.singlets.csv")
+
+d1 <- data.frame(Pitx1neg_Shox2pos_cells, "Pitx1neg_Shox2pos_cells", "A")
+colnames(d1) <- c("cells","gene_class","letter")
+d2 <- data.frame(Pitx1neg_Shox2neg_cells, "Pitx1neg_Shox2neg_cells", "B")
+colnames(d2) <- c("cells","gene_class","letter")
+d3 <- data.frame(Pitx1pos_Shox2pos_cells, "Pitx1pos_Shox2pos_cells", "C")
+colnames(d3) <- c("cells","gene_class","letter")
+d4 <- data.frame(Pitx1pos_Shox2neg_cells, "Pitx1pos_Shox2neg_cells", "D")
+colnames(d4) <- c("cells","gene_class","letter")
+
+cells_class <- rbind(d1,d2,d3,d4)
+row.names(x = cells_class) <- cells_class$cells
+cells_class2 <- cells_class[,c("gene_class","letter")]
+head(cells_class2)
+
+flinv.merged[[colnames(x = cells_class2)]] <- cells_class2
+head(flinv.merged@meta.data)
+
+pdf(file=paste0("flinv_merged_proportions_horizontal.pdf"), width=15, paper = "USr")
+
+DimPlot(flinv.merged, reduction = "umap",label = FALSE, group.by = "gene_class")
+VlnPlot(object = flinv.merged, assay = "RNA", features = "Shox2", group.by = "gene_class",
+        pt.size = 0.1) 
+VlnPlot(object = flinv.merged, assay = "RNA", features = "Pitx1", group.by = "gene_class",
+        pt.size = 0.1) 
+
+t1 <- table(flinv.merged@meta.data$gene_class)
+total <- sum(t1)
+total
+t1 <- as.data.frame(t1)
+t1
+t1$ratio <- t1[,2]/total
+sum(t1$ratio)
+
+ggplot(t1, aes(fill= Var1, x=Var1,y=Freq)) + 
+  geom_bar(position="dodge", stat = "identity") + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust=1))+
+  geom_text(aes(label=Freq), vjust=-0.3, color="black", size=3.5)
+
+ggplot(t1, aes(fill= Var1, x=Var1,y=ratio)) + 
+  geom_bar(position="dodge", stat = "identity") + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust=1))+
+  geom_text(aes(label = sprintf("%0.2f", round(ratio, 2))), vjust=-0.3, color="black", size=3.5)
+dev.off()
+
+saveRDS(flinv.merged, file="~/Desktop/10x/mm39/flinv1_2_merged_singlets.rds")
+#### D.3 merging of 2 WTHL replicates and pitx1+shox2 analysis ####
+wthl1.singlets <- readRDS("~/Desktop/10x/mm39/wthl1_singlets.rds")
+wthl1.singlets
+summary(wthl1.singlets@meta.data)
+table(wthl1.singlets@meta.data$gene_class) 
+
+wthl2.singlets <- readRDS("~/Desktop/10x/mm39/wthl2_singlets.rds")
+wthl2.singlets
+summary(wthl2.singlets@meta.data)
+table(wthl2.singlets@meta.data$gene_class)
+
+wthl.merged <- merge(wthl1.singlets, y= c(wthl2.singlets),
+                     add.cell.ids = c("wthl1","wthl2"))
+
+wthl.merged
+summary(wthl.merged@meta.data)
+table(wthl.merged$orig.ident)
+table(wthl.merged$gene_class) 
+
+
+
+Shox2_counts <- FetchData(wthl.merged, vars="Shox2", slot="counts")
+Pitx1_counts <- FetchData(wthl.merged, vars="Pitx1", slot="counts")
+
+#Pitx1_counts
+Pitx1_selected_cells <- WhichCells(wthl.merged, expression = `Pitx1`>=1, slot="counts")
+length(Pitx1_selected_cells)
+wthl.merged[["Pitx1_positive"]] <- colnames(wthl.merged) %in% Pitx1_selected_cells
+
+#Shox2_counts
+Shox2_selected_cells <- WhichCells(wthl.merged, expression = `Shox2`>=1, slot="counts")
+length(Shox2_selected_cells)
+wthl.merged[["Shox2_positive"]] <- colnames(wthl.merged) %in% Shox2_selected_cells
+
+#Positive and negative distribution
+Shox2_pos_cells <- WhichCells(wthl.merged, expression = `Shox2`>=1, slot="counts")
+Shox2_pos <- length(Shox2_pos_cells)
+Shox2_neg_cells <- WhichCells(wthl.merged, expression = `Shox2`<1, slot="counts")
+Shox2_neg <- length(Shox2_neg_cells)
+Pitx1_pos_cells <- WhichCells(wthl.merged, expression = `Pitx1`>=1, slot="counts")
+Pitx1_pos <- length(Pitx1_pos_cells)
+Pitx1_neg_cells <- WhichCells(wthl.merged, expression = `Pitx1`<1, slot="counts")
+Pitx1_neg <- length(Pitx1_neg_cells)
+
+Name <- c("Shox2","Pitx1")
+Positive <- c(Shox2_pos,Pitx1_pos)
+Negative <- c(Shox2_neg,Pitx1_neg)
+df1_flwt.singlets <- data.frame(Name,Positive,Negative)
+write.csv(df1_flwt.singlets, file = "df1_flwt.singlets.csv")
+
+Pitx1neg_Shox2pos_cells <- WhichCells(wthl.merged, cells = Shox2_pos_cells , expression = `Pitx1` <1, slot="counts")
+Pitx1neg_Shox2pos <- length(Pitx1neg_Shox2pos_cells)
+
+Pitx1neg_Shox2neg_cells <- WhichCells(wthl.merged, cells = Shox2_neg_cells , expression = `Pitx1` <1, slot="counts")
+Pitx1neg_Shox2neg <- length(Pitx1neg_Shox2neg_cells)
+
+Pitx1pos_Shox2pos_cells <- WhichCells(wthl.merged, cells = Shox2_pos_cells , expression = `Pitx1` >=1, slot="counts")
+Pitx1pos_Shox2pos <- length(Pitx1pos_Shox2pos_cells)
+
+Pitx1pos_Shox2neg_cells <- WhichCells(wthl.merged, cells = Shox2_neg_cells , expression = `Pitx1` >=1, slot="counts")
+Pitx1pos_Shox2neg <- length(Pitx1pos_Shox2neg_cells)
+
+sample1 <- c("Pitx1neg_Shox2pos", "Pitx1neg_Shox2neg","Pitx1pos_Shox2pos","Pitx1pos_Shox2neg")
+n_cells1 <- c(Pitx1neg_Shox2pos, Pitx1neg_Shox2neg, Pitx1pos_Shox2pos, Pitx1pos_Shox2neg)
+
+df2_wthl.merged <- data.frame(sample1,n_cells1)
+write.csv(df2_wthl.merged, file = "df2_wthl.merged.singlets.csv")
+
+d1 <- data.frame(Pitx1neg_Shox2pos_cells, "Pitx1neg_Shox2pos_cells", "A")
+colnames(d1) <- c("cells","gene_class","letter")
+d2 <- data.frame(Pitx1neg_Shox2neg_cells, "Pitx1neg_Shox2neg_cells", "B")
+colnames(d2) <- c("cells","gene_class","letter")
+d3 <- data.frame(Pitx1pos_Shox2pos_cells, "Pitx1pos_Shox2pos_cells", "C")
+colnames(d3) <- c("cells","gene_class","letter")
+d4 <- data.frame(Pitx1pos_Shox2neg_cells, "Pitx1pos_Shox2neg_cells", "D")
+colnames(d4) <- c("cells","gene_class","letter")
+
+cells_class <- rbind(d1,d2,d3,d4)
+row.names(x = cells_class) <- cells_class$cells
+cells_class2 <- cells_class[,c("gene_class","letter")]
+head(cells_class2)
+
+wthl.merged[[colnames(x = cells_class2)]] <- cells_class2
+head(wthl.merged@meta.data)
+
+pdf(file=paste0("wthl_merged_proportions_horizontal.pdf"), width=15, paper = "USr")
+
+DimPlot(wthl.merged, reduction = "umap",label = FALSE, group.by = "gene_class")
+VlnPlot(object = wthl.merged, assay = "RNA", features = "Shox2", group.by = "gene_class",
+        pt.size = 0.1) 
+VlnPlot(object = wthl.merged, assay = "RNA", features = "Pitx1", group.by = "gene_class",
+        pt.size = 0.1) 
+
+t1 <- table(wthl.merged@meta.data$gene_class)
+total <- sum(t1)
+total
+t1 <- as.data.frame(t1)
+t1
+t1$ratio <- t1[,2]/total
+sum(t1$ratio)
+
+ggplot(t1, aes(fill= Var1, x=Var1,y=Freq)) + 
+  geom_bar(position="dodge", stat = "identity") + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust=1))+
+  geom_text(aes(label=Freq), vjust=-0.3, color="black", size=3.5)
+
+ggplot(t1, aes(fill= Var1, x=Var1,y=ratio)) + 
+  geom_bar(position="dodge", stat = "identity") + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust=1))+
+  geom_text(aes(label = sprintf("%0.2f", round(ratio, 2))), vjust=-0.3, color="black", size=3.5)
+dev.off()
+
+saveRDS(wthl.merged, file="~/Desktop/10x/mm39/wthl1_2_merged_singlets.rds")
+
+wthl.merged <- readRDS("~/Desktop/10x/mm39/wthl1_2_merged_singlets.rds")
+
+
+
+
+
+#### D.3 Create a single MERGED Seurat Object with all samples#####
+wtfl1.singlets <- readRDS("~/Desktop/10x/mm39/wtfl1_singlets.rds")
+wtfl1.singlets
+summary(wtfl1.singlets@meta.data)
+table(wtfl1.singlets@meta.data$gene_class)
+
+wtfl3.singlets <- readRDS("~/Desktop/10x/mm39/wtfl3_singlets.rds")
+wtfl3.singlets
+summary(wtfl3.singlets@meta.data)
+table(wtfl3.singlets@meta.data$gene_class)
+
+flinv1.singlets <- readRDS("~/Desktop/10x/mm39/flinv1_singlets.rds")
+flinv1.singlets
+summary(flinv1.singlets@meta.data)
+table(flinv1.singlets@meta.data$gene_class)
+
+flinv2.singlets <- readRDS("~/Desktop/10x/mm39/flinv2_singlets.rds")
+flinv2.singlets
+summary(flinv2.singlets@meta.data)
+table(flinv2.singlets@meta.data$gene_class)
+
+fldcas9.singlets <- readRDS("~/Desktop/10x/mm39/fldcas9.singlets.rds")
+fldcas9.singlets
+summary(fldcas9.singlets@meta.data)
+table(fldcas9.singlets@meta.data$gene_class)
+
+wthl1.singlets <- readRDS("~/Desktop/10x/mm39/wthl1_singlets.rds")
+wthl1.singlets
+summary(wthl1.singlets@meta.data)
+table(wthl1.singlets@meta.data$gene_class)
+
+wthl2.singlets <- readRDS("~/Desktop/10x/mm39/wthl2_singlets.rds")
+wthl2.singlets
+summary(wthl2.singlets@meta.data)
+table(wthl2.singlets@meta.data$gene_class)
+
+
+all.merged <- merge(wtfl1.singlets, y= c(wtfl3.singlets,flinv1.singlets,fldcas9.singlets,flinv2.singlets,wthl1.singlets,wthl2.singlets),
+                    add.cell.ids = c("wtfl1","wtfl3","flinv1","fldcas9","flinv2", "wthl1", "wthl2"))
+
+all.merged
+summary(all.merged@meta.data)
+table(all.merged$orig.ident)
+table(all.merged$gene_class)    
+
+## add $stage @metadata ##
+all.merged@meta.data$stage <- gsub("[0-9]$","", all.merged$orig.ident)
+all.merged@meta.data$stage <- gsub("_rep","", all.merged$stage)
+all.merged@meta.data$stage <- gsub("FL_","", all.merged$stage)
+table(all.merged$stage)
+
+saveRDS(all.merged, file="~/Desktop/10x/mm39/all.merged.rds")
+
+#### E. SCT Transform and PCA wo CC regression ####
+#### E.1. all.merged 29'903 cells ####
+all.merged <- readRDS("~/Desktop/10x/mm39/all.merged.rds")
+all.merged
+summary(all.merged@meta.data)
+table(all.merged$orig.ident)
+table(all.merged$gene_class)
+table(all.merged$stage)
+
+#sct
+all.merged <- SCTransform(all.merged, assay = "RNA")
+
+# Check cell-cycle
+s.genes <- str_to_title(cc.genes$s.genes)
+g2m.genes <- str_to_title(cc.genes$g2m.genes)
+all.merged <- CellCycleScoring(all.merged, s.features = s.genes, g2m.features = g2m.genes, set.ident = FALSE)
+
+#wtfl1 <-RunUMAP(wtfl1,dims = 1:50)
+
+pdf(file=paste0("all.merged_CellCycle.pdf"))
+Idents(all.merged) <- "Phase"
+DimPlot(all.merged, split.by = "Phase", reduction = "umap", label=F) + labs(title = "Phase") 
+DimPlot(all.merged, group.by = "Phase", reduction = "umap", label=F) + labs(title = "Phase")
+RidgePlot(all.merged, features = c("Pcna", "Top2a", "Mcm6", "Mki67"), ncol = 2)
+dev.off()
+
+Idents(all.merged) <- "orig.ident"
+Idents(all.merged)
+summary(all.merged@meta.data)
+
+##### F. SCT and and Cell Cycle Regression excluding dCas9 ####
+#### F.2. all.merged 29'903 cells ####
+#SCT cell cycle regression
+all.merged.SCTCC <- SCTransform(all.merged,vars.to.regress = c("S.Score", "G2M.Score"),assay = "RNA")
+all.merged.SCTCC
+summary(all.merged.SCTCC@meta.data)
+
+# excluding the reporter dCas9P300-bGHpA from the variable genes to avoid driving the PCA
+grep ("dCas9P300-bGHpA", all.merged.SCTCC@assays[["SCT"]]@var.features)
+all.merged.SCTCC@assays[["SCT"]]@var.features <- grep ("dCas9P300-bGHpA", all.merged.SCTCC@assays[["SCT"]]@var.features, invert = TRUE, value=TRUE)
+
+
+length(VariableFeatures(all.merged.SCTCC))
+
+saveRDS(all.merged.SCTCC, file="~/Desktop/10x/mm39/all.merged.SCTCC.rds")
+
+#### G. Final PCA & UMAP ####
+#### G.2. all.merged.SCTCC 29'903 cells ####
+all.merged.SCTCC <- readRDS("~/Desktop/10x/mm39/all.merged.SCTCC.rds")
+all.merged.SCTCC
+summary(all.merged.SCTCC@meta.data)
+length(VariableFeatures(all.merged.SCTCC))
+table(all.merged.SCTCC$gene_class)
+
+#PCA on the SCT
+all.merged.SCTCC <- RunPCA(object = all.merged.SCTCC, npcs = 50)
+
+pdf(file=paste0("all.merged.SCTCC_PCA.pdf"))
+DimPlot(all.merged.SCTCC, reduction = "pca")
+Idents(all.merged.SCTCC) <- "Phase"
+DimPlot(all.merged.SCTCC, reduction = "pca")
+Idents(all.merged.SCTCC) <- "orig.ident"
+Idents(all.merged.SCTCC)
+dev.off()
+
+#UMAP on the SCT
+all.merged.SCTCC <- RunUMAP(object = all.merged.SCTCC, dims = 1:50)
+
+pdf(file=paste0("all.merged.SCTCC_UMAP.pdf"))
+DimPlot(all.merged.SCTCC, reduction = "umap")
+Idents(all.merged.SCTCC) <- "Phase"
+Idents(all.merged.SCTCC)
+DimPlot(all.merged.SCTCC, reduction = "umap")
+Idents(all.merged.SCTCC) <- "gene_class"
+Idents(all.merged.SCTCC)
+DimPlot(all.merged.SCTCC, reduction = "umap")
+DimPlot(all.merged.SCTCC, reduction = "umap", split.by = "stage")
+DimPlot(all.merged.SCTCC, reduction = "umap", split.by = "gene_class")
+Idents(all.merged.SCTCC) <- "orig.ident"
+Idents(all.merged.SCTCC)
+DefaultAssay(object = all.merged.SCTCC) <- "RNA"
+all.merged.SCTCC
+genes <- c("Pitx1","Shox2","Hoxd13","dCas9P300-bGHpA","Wnt6","Myod1","Krt14","Cdh5","Cd48")
+FeaturePlot(object = all.merged.SCTCC, features = genes ,cols = c("grey95","darkred"), combine = FALSE)
+genes <- c("Dcn","Gdf5","Shh","Sox9","Irx5","Msx1","Osr1")
+FeaturePlot(object = all.merged.SCTCC, features = genes ,cols = c("grey95","darkred"), combine = FALSE)
+genes2 <- c("Shox2","Hoxd13")
+FeaturePlot(object = all.merged.SCTCC, features = genes2 ,cols = c("grey95","darkred"), combine = TRUE, split.by ="gene_class" )
+DefaultAssay(object = all.merged.SCTCC) <- "SCT"
+all.merged.SCTCC
+dev.off()
+
+# UMAP split by original identity
+
+pdf(file=paste0("all.merged.SCTCC_UMAP_splitbyident.pdf"), width=15, paper = "USr")
+DimPlot(all.merged.SCTCC, reduction = "umap", split.by = "orig.ident")
+genes <- c("Pitx1")
+FeaturePlot(object = all.merged.SCTCC, features = genes ,cols = c("grey95","darkred"), split.by = "orig.ident", combine = FALSE)
+dev.off()
+
+#Find Neighbors on the SCT
+all.merged.SCTCC <- FindNeighbors(object = all.merged.SCTCC)
+
+# save as seurat object 
+saveRDS(all.merged.SCTCC, file="~/Desktop/10x/mm39/all.merged.SCTCC.UMAP.rds")
+
+##### H. Integrate analysis ######
+
+all.merged.SCTCC <- readRDS("~/Desktop/10x/mm39/all.merged.SCTCC.UMAP.rds")
+
+split.list <- SplitObject(all.merged.SCTCC, split.by = "orig.ident")
+
+# normalize and identify variable features for each dataset independently
+split.list <- lapply(X = split.list, FUN = SCTransform)
+
+#select features that are repeatedly variable across datasets for integration
+
+features <- SelectIntegrationFeatures(object.list = split.list, nfeatures = 3000)
+
+write.table(features, file ="variable_genes_SCT_030823.txt")
+
+split.list <- PrepSCTIntegration(object.list = split.list, anchor.features = features)
+
+
+anchors <- FindIntegrationAnchors(object.list = split.list,  normalization.method = "SCT",
+                                  anchor.features = features)
+
+# this command creates an 'integrated' data assay
+split.integrated <- IntegrateData(anchorset = anchors, normalization.method = "SCT")
+
+split.integrated <- ScaleData(split.integrated, vars.to.regress = c("S.Score", "G2M.Score"), verbose = FALSE) #- When running sctransform-based workflows, including integration, do not run the ScaleData() function
+
+grep ("dCas9P300-bGHpA", split.integrated@assays[["integrated"]]@var.features)
+split.integrated@assays[["SCT"]]@var.features <- grep ("dCas9P300-bGHpA", split.integrated@assays[["SCT"]]@var.features, invert = TRUE, value=TRUE)
+
+
+split.integrated <- RunPCA(split.integrated, npcs = 50, verbose = FALSE)
+
+pdf(file=paste0("split_integrated_PCA_SCT_ccregressed.pdf"))
+DimPlot(split.integrated, reduction = "pca")
+Idents(split.integrated) <- "Phase"
+DimPlot(split.integrated, reduction = "pca")
+Idents(split.integrated) <- "orig.ident"
+Idents(split.integrated)
+dev.off()
+
+
+split.integrated <- RunUMAP(split.integrated, reduction = "pca", dims = 1:50)
+DimPlot(split.integrated, reduction = "umap", group.by = "Phase") #260723 addition
+
+pdf(file=paste0("split_integrated_UMAP_SCT.pdf"), width=15, paper = "USr")
+DimPlot(split.integrated, reduction = "umap", group.by = "orig.ident")
+DimPlot(split.integrated, reduction = "umap", split.by = "orig.ident")
+genes <- c("Pitx1")
+FeaturePlot(object = split.integrated, features = genes ,cols = c("grey95","darkred"), split.by = "orig.ident",  min.cutoff = 0, combine = FALSE)
+dev.off()
+
+
+split.integrated <- FindNeighbors(split.integrated, reduction = "pca", dims = 1:50)
+
+
+saveRDS(split.integrated, file="~/Desktop/10x/mm39/split.integrated.SCTCC_postintegration.UMAP.rds") #added c.c. regression to the integration of the datasets
+
+#first clustering
+
+
+all.int <- FindClusters(object = split.integrated, resolution = seq(from = 0.1, to = 2, by = 0.1))
+
+library(clustree)
+
+clustree(x = all.int, prefix = "integrated_snn_res.")
+
+summary(all.int@meta.data)
+
+pdf(file=paste0("all.int_UMAP_clustering_options_SCT_030823.pdf"))
+DimPlot(object = all.int, reduction = "umap", group.by = "integrated_snn_res.0.1", label = TRUE, label.size = 6)
+DimPlot(object = all.int, reduction = "umap", group.by = "integrated_snn_res.0.2", label = TRUE, label.size = 6) 
+DimPlot(object = all.int, reduction = "umap", group.by = "integrated_snn_res.0.3", label = TRUE, label.size = 6)
+DimPlot(object = all.int, reduction = "umap", group.by = "integrated_snn_res.0.4", label = TRUE, label.size = 6) 
+dev.off()
+
+#FINAL CLUSTERING
+split.integrated <- readRDS("~/Desktop/10x/mm39/split.integrated.SCTCC_postintegration.UMAP.rds")
+split.integrated
+summary(split.integrated@meta.data)
+
+all.int <- FindClusters(object = split.integrated, resolution = 0.1)
+
+cell.num <- table(Idents(all.int))
+clusterLabels <- paste(names(cell.num), paste0("(", cell.num, ")"))
+clusterBreaks <- names(cell.num)
+
+pdf(file=paste0("all.int_UMAP_allclusters_SCTintegrated_030823.pdf"))
+DimPlot(all.int, reduction = "umap",label = TRUE, label.size = 6)
+DimPlot(all.int, reduction = "umap", label=TRUE) + scale_colour_discrete(breaks = clusterBreaks,labels = clusterLabels) + labs(title = "UMAP")
+ptsize <- 0.5
+DimPlot(all.int, group.by = "Pitx1_positive", cols = c("grey95","darkred"), reduction = "umap", label=F, order=TRUE, pt.size=ptsize) + labs(title = "Pitx1_positive_cells") + NoLegend()
+DimPlot(all.int, group.by = "dCas9P300bGHpA_positive", cols = c("grey95","darkred"), reduction = "umap", label=F, order=TRUE, pt.size=ptsize) + labs(title = "dCas9P300-bGHpA_positive_cells") + NoLegend()
+DimPlot(all.int, group.by = "Shox2_positive", cols = c("grey95","darkred"), reduction = "umap", label=F, order=TRUE, pt.size=ptsize) + labs(title = "Shox2_positive_cells") + NoLegend()
+DimPlot(all.int, group.by = "Phase", reduction = "umap", label=F)
+dev.off()
+
+# save as seurat object 
+
+saveRDS(all.int, file="~/Desktop/10x/mm39/all.int.clus.SCT.rds")
+
+#### I. Cluster identification ####
+#### I.2. all.int.clus 29'903 cells ####
+all.int <- readRDS("~/Desktop/10x/mm39/all.int.clus.SCT.rds")
+all.int
+DimPlot(all.int, reduction = "umap",label = TRUE, label.size = 6)
+DimPlot(all.int, reduction = "umap",label = TRUE, label.size = 6, split.by = "orig.ident")
+summary(all.int@meta.data)
+
+#Run the DE markers in the RNA assay
+DefaultAssay(all.int) <- "RNA"
+all.int
+
+cluster0.markers = FindMarkers(all.int, ident.1 = 0, only.pos = TRUE)
+head (cluster0.markers,15)
+write.csv(cluster0.markers,file=("all.int_cluster0.markers.csv"))
+
+cluster1.markers = FindMarkers(all.int, ident.1 = 1, only.pos = TRUE)
+head (cluster1.markers,15)
+write.csv(cluster1.markers,file=("all.int_cluster1.markers.csv"))
+
+cluster2.markers = FindMarkers(all.int, ident.1 = 2, only.pos = TRUE)
+head (cluster2.markers,15)
+write.csv(cluster2.markers,file=("all.int_cluster2.markers.csv"))
+
+cluster3.markers = FindMarkers(all.int, ident.1 = 3, only.pos = TRUE)
+head (cluster3.markers,15)
+write.csv(cluster3.markers,file=("all.int_cluster3.markers.csv"))
+
+cluster4.markers = FindMarkers(all.int, ident.1 = 4, only.pos = TRUE)
+head (cluster4.markers,15)
+write.csv(cluster4.markers,file=("all.int_cluster4.markers.csv"))
+
+cluster5.markers = FindMarkers(all.int, ident.1 = 5, only.pos = TRUE)
+head (cluster5.markers,20)
+write.csv(cluster5.markers,file=("all.int_cluster5.markers.csv"))
+
+cluster6.markers = FindMarkers(all.int, ident.1 = 6, only.pos = TRUE)
+head (cluster6.markers,15)
+write.csv(cluster6.markers,file=("all.int_cluster6.markers.csv"))
+
+cluster7.markers = FindMarkers(all.int, ident.1 = 7, only.pos = TRUE)
+head (cluster7.markers,15)
+write.csv(cluster7.markers,file=("all.int_cluster7.markers.csv"))
+
+cluster8.markers = FindMarkers(all.int, ident.1 = 8, only.pos = TRUE)
+head (cluster8.markers,15)
+write.csv(cluster8.markers,file=("all.int_cluster8.markers.csv"))
+
+cluster9.markers = FindMarkers(all.int, ident.1 = 9, only.pos = TRUE)
+head (cluster9.markers,15)
+write.csv(cluster9.markers,file=("all.int_cluster9.markers.csv"))
+
+DefaultAssay(all.int) <- "SCT"
+all.int
+
+#0-Proximal Mesenchyme =PM -> to be merged with clusters 1 and 2 to make a single mesenchymal subcluster
+#1-Distal Mesenchyme = DM
+#2-Proliferative Mesenchyme= PLM
+#3-Immune cells = sat3 (satellite cluster 3)
+#4-Epithelium = sat4
+#5-Endothelium = sat5
+#6-satellite cluster 6 unidentified =sat6
+#7-satellite cluster 7 unidentified =sat7
+#8-satellite cluster 8 unidentified =sat8
+
+all.int.labelled <- all.int
+
+all.int.labelled@meta.data$seurat.annotations <- all.int.labelled@meta.data$seurat_clusters
+levels(all.int.labelled$seurat.annotations) <- c("M","M", "Epithelium", "M","Muscle","M", "Endothelium","Epithelium","Immune","Nervous")
+
+DimPlot(all.int.labelled, reduction = "umap",label = TRUE, label.size = 3, group.by = "seurat.annotations")
+
+all.int.labelled <- RenameIdents(all.int.labelled,'0' = "M", '1' = "M", '2' = "Epithelium",
+                                 '3' = "M", '4' = "Muscle", '5' = "M", '6' = "Endothelium", '7' = "Epithelium", '8' = "Immune", '9' = "Nervous")
+
+all.int.labelled <- RenameIdents(all.int.labelled,'sat2' = "Epithelium",
+                                 'sat4' = "Muscle", 'sat6' = "Endothelium", 'sat7' = "Epithelium", 'sat8' = "Immune", 'sat9' = "Nervous")
+
+#some plots  & basic proportion of cells per cluster and sample
+
+pdf(file=paste0("all.int_UMAP_allclusters_labelled_cell_proportion.SCT_labelled.pdf"))
+
+DimPlot(all.int.labelled, reduction = "umap",label = TRUE, label.size = 3.5)
+cell.num <- table(Idents(all.int.labelled))
+clusterLabels <- paste(names(cell.num), paste0("(", cell.num, ")"))
+clusterBreaks <- names(cell.num)
+DimPlot(all.int.labelled, reduction = "umap", label=TRUE) + scale_colour_discrete(breaks = clusterBreaks,labels = clusterLabels) 
+
+propotions_cells_percluster <- prop.table(table(all.int.labelled$seurat.annotations, all.int.labelled$orig.ident), margin = 2)
+propotions_cells_percluster.df <- as.data.frame(propotions_cells_percluster)
+t(propotions_cells_percluster)
+
+ggplot(propotions_cells_percluster.df, aes(fill= Var2, x=Var1,y=Freq)) + 
+  geom_bar(position="dodge", stat = "identity") + theme_bw() + 
+  geom_text(aes(label = sprintf("%0.2f", round(Freq, 2))), color="black", size=3.5, position = position_dodge(0.9), vjust = 0)
+
+ggplot(propotions_cells_percluster.df, aes(fill= Var1, x=Var2,y=Freq)) + 
+  geom_bar(position="fill", stat = "identity") +
+  geom_text(aes(label = sprintf("%0.2f", round(Freq, 2))), color="black", size=3.5,position = position_stack(vjust = 0.5))
+
+propotions_cells_percluster <- prop.table(table(all.int.labelled$seurat.annotations, all.int.labelled$stage), margin = 2)
+propotions_cells_percluster.df <- as.data.frame(propotions_cells_percluster)
+t(propotions_cells_percluster)
+
+ggplot(propotions_cells_percluster.df, aes(fill= Var2, x=Var1,y=Freq)) + 
+  geom_bar(position="dodge", stat = "identity") + theme_bw() + scale_fill_manual(values = c("turquoise3","green3","red3"))+
+  geom_text(aes(label = sprintf("%0.2f", round(Freq, 2))), color="black", size=3.5, position = position_dodge(0.9), vjust = 0)
+
+ggplot(propotions_cells_percluster.df, aes(fill= Var1, x=Var2,y=Freq)) + 
+  geom_bar(position="fill", stat = "identity") + 
+  geom_text(aes(label = sprintf("%0.2f", round(Freq, 2))), color="black", size=3.5,position = position_stack(vjust = 0.5))
+
+propotions_cells_percluster <- prop.table(table(all.int.labelled$seurat.annotations, all.int.labelled$gene_class), margin = 2)
+propotions_cells_percluster.df <- as.data.frame(propotions_cells_percluster)
+t(propotions_cells_percluster)
+
+ggplot(propotions_cells_percluster.df, aes(fill= Var2, x=Var1,y=Freq)) + 
+  geom_bar(position="dodge", stat = "identity") + theme_bw() +
+  geom_text(aes(label = sprintf("%0.2f", round(Freq, 2))), color="black", size=3.5, position = position_dodge(0.9), vjust = 0)
+
+ggplot(propotions_cells_percluster.df, aes(fill= Var1, x=Var2,y=Freq)) + 
+  geom_bar(position="fill", stat = "identity") + 
+  geom_text(aes(label = sprintf("%0.2f", round(Freq, 2))), color="black", size=3.5,position = position_stack(vjust = 0.5))
+dev.off()
+
+# save as seurat object 
+summary(all.int.labelled@meta.data)
+saveRDS(all.int.labelled, file="~/Desktop/10x/mm39/all.int.labelled.SCT.rds")
+
+
+#040823 renaming satellite clusters
+all.int.labelled <- readRDS("~/Desktop/10x/mm39/all.int.labelled.SCT.rds")
+
+all.int.labelled <- RenameIdents(all.int.labelled,'sat2' = "Epithelium",
+                                 'sat4' = "Muscle", 'sat6' = "Endothelium", 'sat7' = "Epithelium", 'sat8' = "Immune", 'sat9' = "Nervous")
+
+
+#### J. Sub-setting Mesenchyme ####
+#### J.2. all.int.labelled 21'072 cells, 18'240 mesenchymal ####
+all.int.labelled <- readRDS("~/Desktop/10x/mm39/all.int.labelled.SCT.rds")
+all.int.labelled
+Idents(all.int.labelled)
+summary(all.int.labelled@meta.data)
+
+all.int.mesenchyme <- subset(all.int.labelled, idents = c("M"))
+all.int.mesenchyme
+table(all.int.mesenchyme$orig.ident)
+table(all.int.mesenchyme$seurat_clusters)
+DimPlot(all.int.mesenchyme, reduction = "umap", label = TRUE)
+
+# save as seurat object 
+saveRDS(all.int.mesenchyme, file="~/Desktop/10x/mm39/all.int.mesenchyme.SCT.rds")
+
+#### K. Re-clustering Mesenchyme cells ####
+#### K.2 all.int.mesenchyme 26'000 cells ####
+all.int.mesenchyme <- readRDS("~/Desktop/10x/mm39/all.int.mesenchyme.SCT.rds")
+all.int.mesenchyme
+summary(all.int.mesenchyme@meta.data)
+
+pdf(file=paste0("all.int_UMAP_mesenchyme.SCT.pdf"))
+DimPlot(all.int.mesenchyme, reduction = "umap", label = TRUE)
+Idents(all.int.mesenchyme) <- "stage"
+Idents(all.int.mesenchyme)
+DimPlot(all.int.mesenchyme, reduction = "umap")
+Idents(all.int.mesenchyme) <- "seurat.annotations"
+Idents(all.int.mesenchyme)
+
+
+all.int.mesenchyme <- RunUMAP(object = all.int.mesenchyme, dims = c(1:20), min.dist = 0.7, metric = "euclidean", spread = 1)
+
+
+DimPlot(all.int.mesenchyme, reduction = "umap", label = TRUE)
+
+DefaultAssay(all.int.mesenchyme) <- "RNA"
+all.int.mesenchyme
+FeaturePlot(object = all.int.mesenchyme, features = "Hoxd13" ,cols = c("grey95","darkred"), combine = FALSE)
+FeaturePlot(object = all.int.mesenchyme, features = "Shox2" ,cols = c("grey95","darkred"), combine = FALSE)
+FeaturePlot(object = all.int.mesenchyme, features = "Tbx3" ,cols = c("grey95","darkred"), combine = FALSE)
+FeaturePlot(object = all.int.mesenchyme, features = "Ogn" ,cols = c("grey95","darkred"), combine = FALSE)
+FeaturePlot(object = all.int.mesenchyme, features = "Lum" ,cols = c("grey95","darkred"), combine = FALSE)
+FeaturePlot(object = all.int.mesenchyme, features = "Msx1" ,cols = c("grey95","darkred"), combine = FALSE)
+FeaturePlot(object = all.int.mesenchyme, features = "Aurkb" ,cols = c("grey95","darkred"), combine = FALSE)
+FeaturePlot(object = all.int.mesenchyme, features = "Foxc1" ,cols = c("grey95","darkred"), combine = FALSE)
+FeaturePlot(object = all.int.mesenchyme, features = "Col9a3" ,cols = c("grey95","darkred"), combine = FALSE)
+FeaturePlot(object = all.int.mesenchyme, features = "Irx1" ,cols = c("grey95","darkred"), combine = FALSE)
+FeaturePlot(object = all.int.mesenchyme, features = "Pitx1" ,cols = c("grey95","darkred"), combine = FALSE)
+FeaturePlot(object = all.int.mesenchyme, features = "Irx5" ,cols = c("grey95","darkred"), combine = FALSE)
+FeaturePlot(object = all.int.mesenchyme, features = "Ihh" ,cols = c("grey95","darkred"), combine = FALSE)
+FeaturePlot(object = all.int.mesenchyme, features = "Osr1" ,cols = c("grey95","darkred"), combine = FALSE)
+FeaturePlot(object = all.int.mesenchyme, features = "Top2a" ,cols = c("grey95","darkred"), combine = FALSE)
+FeaturePlot(object = all.int.mesenchyme, features = "Shh" ,cols = c("grey95","darkred"), combine = FALSE)
+FeaturePlot(object = all.int.mesenchyme, features = "Gdf5" ,cols = c("grey95","darkred"), combine = FALSE)
+FeaturePlot(object = all.int.mesenchyme, features = "dCas9P300-bGHpA" ,cols = c("grey95","darkred"), combine = FALSE)
+dev.off()
+
+DefaultAssay(all.int.mesenchyme) <- "integrated"
+all.int.UMAP_mesenchyme <- FindNeighbors(object = all.int.mesenchyme, reduction = "pca", dims = 1:20)
+
+# save as seurat object 
+saveRDS(all.int.UMAP_mesenchyme, file="~/Desktop/10x/mm39/all.int.UMAP_mesenchyme.SCT.rds")
+
+#Pitx1 expression in different orig.ident
+
+DefaultAssay(all.int.mesenchyme) <- "RNA"
+
+pdf(file=paste0("all.int.UMAP_mesenchyme_splitbyident.SCT.pdf"), width=15, paper = "USr")
+DimPlot(all.int.UMAP_mesenchyme, reduction = "umap", split.by = "orig.ident")
+genes <- c("Pitx1")
+FeaturePlot(object = all.int.UMAP_mesenchyme, features = genes ,cols = c("grey95","darkred"), split.by = "orig.ident", combine = FALSE)
+dev.off()
+
+##### M. subclustering of the mesenchyme ####
+
+all.int.UMAP_mesenchyme <- readRDS("~/Desktop/10x/mm39/all.int.UMAP_mesenchyme.SCT.rds")
+
+all.int.UMAP_mesenchyme <- FindNeighbors(all.int.UMAP_mesenchyme, reduction = "pca", dims = 1:20)
+
+all.intUMAP_mesenchyme <- FindClusters(object = all.int.UMAP_mesenchyme, resolution = seq(from = 0.1, to = 2, by = 0.1))
+
+library(clustree)
+
+clustree(x = all.intUMAP_mesenchyme, prefix = "integrated_snn_res.")
+
+summary(all.intUMAP_mesenchyme@meta.data)
+
+all.m <- FindClusters(object = all.int.UMAP_mesenchyme, resolution = 0.3)
+
+cell.num <- table(Idents(all.m))
+clusterLabels <- paste(names(cell.num), paste0("(", cell.num, ")"))
+clusterBreaks <- names(cell.num)
+
+pdf(file=paste0("all_mesenchymal_UMAP_allclusters_0_3level.pdf"))
+DimPlot(all.m, reduction = "umap",label = TRUE, label.size = 6)
+DimPlot(all.m, reduction = "umap", label=TRUE) + scale_colour_discrete(breaks = clusterBreaks,labels = clusterLabels) + labs(title = "UMAP")
+ptsize <- 0.5
+DimPlot(all.m, group.by = "Pitx1_positive", cols = c("grey95","darkred"), reduction = "umap", label=F, order=TRUE, pt.size=ptsize) + labs(title = "Pitx1_positive_cells") + NoLegend()
+DimPlot(all.m, group.by = "dCas9P300bGHpA_positive", cols = c("grey95","darkred"), reduction = "umap", label=F, order=TRUE, pt.size=ptsize) + labs(title = "dCas9P300-bGHpA_positive_cells") + NoLegend()
+DimPlot(all.m, group.by = "Shox2_positive", cols = c("grey95","darkred"), reduction = "umap", label=F, order=TRUE, pt.size=ptsize) + labs(title = "Shox2_positive_cells") + NoLegend()
+DimPlot(all.m, group.by = "Phase", reduction = "umap", label=F)
+dev.off()
+
+# save as seurat object 
+saveRDS(all.m, file="~/Desktop/10x/mm39/all.mesenchymal.clus.rds")
+
+DefaultAssay(all.m) <- "RNA"
+all.m
+
+cluster0.markers = FindMarkers(all.m, ident.1 = 0, only.pos = TRUE)
+head (cluster0.markers,15)
+write.csv(cluster0.markers,file=("all.m_cluster0.markers.csv"))
+
+cluster1.markers = FindMarkers(all.m, ident.1 = 1, only.pos = TRUE)
+head (cluster1.markers,15)
+write.csv(cluster1.markers,file=("all.m_cluster1.markers.csv"))
+
+cluster2.markers = FindMarkers(all.m, ident.1 = 2, only.pos = TRUE)
+head (cluster2.markers,15)
+write.csv(cluster2.markers,file=("all.m_cluster2.markers.csv"))
+
+cluster3.markers = FindMarkers(all.m, ident.1 = 3, only.pos = TRUE)
+head (cluster3.markers,15)
+write.csv(cluster3.markers,file=("all.m_cluster3.markers.csv"))
+
+cluster4.markers = FindMarkers(all.m, ident.1 = 4, only.pos = TRUE)
+head (cluster4.markers,15)
+write.csv(cluster4.markers,file=("all.m_cluster4.markers.csv"))
+
+cluster5.markers = FindMarkers(all.m, ident.1 = 5, only.pos = TRUE)
+head (cluster5.markers,20)
+write.csv(cluster5.markers,file=("all.m_cluster5.markers.csv"))
+
+cluster6.markers = FindMarkers(all.m, ident.1 = 6, only.pos = TRUE)
+head (cluster6.markers,15)
+write.csv(cluster6.markers,file=("all.m_cluster6.markers.csv"))
+
+cluster7.markers = FindMarkers(all.m, ident.1 = 7, only.pos = TRUE)
+head (cluster7.markers,15)
+write.csv(cluster7.markers,file=("all.m_cluster7.markers.csv"))
+
+cluster8.markers = FindMarkers(all.m, ident.1 = 8, only.pos = TRUE)
+head (cluster8.markers,15)
+write.csv(cluster8.markers,file=("all.m_cluster8.markers.csv"))
+
+cluster9.markers = FindMarkers(all.m, ident.1 = 9, only.pos = TRUE)
+head (cluster9.markers,15)
+write.csv(cluster9.markers,file=("all.m_cluster9.markers.csv"))
+
+
+##### 040823 figures ####
+
+all.m <- readRDS("~/Desktop/10x/mm39/all.mesenchymal.clus.rds")
+
+DefaultAssay(object = all.m) <- "RNA"
+DefaultAssay(object = all.int.labelled) <- "RNA"
+
+pdf(file=paste0("markers_by_ident_merged.replicates.pdf"))
+FeaturePlot(object = all.m, features = c('Pitx1'), cols = c("grey95","darkred"), split.by= "stage", keep.scale = "feature", min.cutoff = 0, combine = FALSE)
+FeaturePlot(object = all.m, features = c('dCas9P300-bGHpA'), cols = c("grey95","darkred"), split.by= "stage", keep.scale = "feature", min.cutoff = 0, combine = FALSE)
+FeaturePlot(object = all.m, features = c('Shox2'), cols = c("grey95","darkred"), split.by= "stage", keep.scale = "feature", min.cutoff = 0, combine = FALSE)
+FeaturePlot(object = all.int.labelled, features = c('Pitx1'), cols = c("grey95","darkred"), split.by= "stage", keep.scale = "feature", min.cutoff = 0, combine = FALSE)
+dev.off()
+
+DimPlot(all.int.labelled, reduction = "umap",split.by= "orig.ident", label = TRUE, label.size = 3.5)
+
+all.int.labelled <- readRDS("~/Desktop/10x/mm39/all.int.labelled.SCT.rds")
+
+
+VlnPlot(all.int.labelled, features = "Pitx1", split.by = "stage") +
+  geom_boxplot(width=0.1, fill="white")
+
+VlnPlot(all.m, features = "Pitx1", split.by = "stage") +
+  geom_boxplot(width=0.1, fill="white")
+
+log1p(AverageExpression(all.int.labelled, features = "Pitx1", verbose = FALSE, group.by = "stage")$RNA)
+
+fun1 = function (x) {log1p(mean(x = expm1(x = x)))}
+
+pdf(file=paste0("Vln_Pitx1_by_cluster.pdf"))
+VlnPlot(object = all.int.labelled, assay = "RNA", features = "Pitx1", group.by = "seurat.annotations", split.by = "stage", pt.size = 0, y.max = 4) + ggtitle("Pitx1") +
+  stat_summary(fun.y = fun1, geom = "point", shape=95, size=4,colour="red" ) + stat_summary(fun.y = fun1, geom="text", aes(label=sprintf("%1.3f", ..y..))) 
+dev.off()
+
+log1p(AverageExpression(all.int.labelled, features = "Shox2", verbose = FALSE, group.by = "stage")$RNA)
+
+fun1 = function (x) {log1p(mean(x = expm1(x = x)))}
+
+pdf(file=paste0("Vln_Shox2_by_cluster.pdf"))
+VlnPlot(object = all.int.labelled, assay = "RNA", features = "Shox2", group.by = "seurat.annotations", split.by = "stage", pt.size = 0, y.max = 4) + ggtitle("Pitx1") +
+  stat_summary(fun.y = fun1, geom = "point", shape=95, size=4,colour="red" ) + stat_summary(fun.y = fun1, geom="text", aes(label=sprintf("%1.3f", ..y..))) 
+dev.off()
+##### mesenchymal cluster identification #####
+
+all.m <- readRDS("~/Desktop/10x/mm39/all.mesenchymal.clus.rds")
+
+#0-Mesopodium =Ms 
+#1-Distal Poliferative Progenitors = DPP
+#2-Distal progenitors= DP
+#3-Tendon Progenitors = TP 
+#4-Irregular Connective Tissue = ICT
+#5-Proximal Proliferative Progenitors = PPP
+#6-Proximal Condensations =PC
+#7-Late Digit Condensations =LDC
+#8-Irregular Connective Tissue =ICT
+#9-Early Digit Condensations = EDC
+
+all.m.labelled <- all.m
+
+all.m.labelled@meta.data$seurat.annotations <- all.m.labelled@meta.data$seurat_clusters
+levels(all.m.labelled$seurat.annotations) <- c("Ms","DPP", "DP", "TP","ICT","PPP", "PC","LDC","ICT","EDC")
+
+DimPlot(all.m.labelled, reduction = "umap",label = TRUE, label.size = 3, group.by = "seurat.annotations")
+
+all.m.labelled <- RenameIdents(all.m.labelled,'0' = "Ms", '1' = "DPP", '2' = "DP",
+                               '3' = "TP", '4' = "ICT", '5' = "PPP", '6' = "PC", '7' = "LDC", '8' = "ICT", '9' = "EDC")
+
+#all.m.labelled <- RenameIdents(all.m.labelled,'sat2' = "Epithelium",
+#                                 'sat4' = "Muscle", 'sat6' = "Endothelium", 'sat7' = "Epithelium", 'sat8' = "Immune", 'sat9' = "Nervous")
+
+#some plots  & basic proportion of cells per cluster and sample
+
+pdf(file=paste0("all.m_UMAP_allclusters_labelled_cell_proportion.SCT_labelled_2.pdf"))
+
+DimPlot(all.m.labelled, reduction = "umap",label = TRUE, label.size = 3.5)
+cell.num <- table(Idents(all.m.labelled))
+clusterLabels <- paste(names(cell.num), paste0("(", cell.num, ")"))
+clusterBreaks <- names(cell.num)
+DimPlot(all.m.labelled, reduction = "umap", label=TRUE) + scale_colour_discrete(breaks = clusterBreaks,labels = clusterLabels) 
+
+propotions_cells_percluster <- prop.table(table(all.m.labelled$seurat.annotations, all.m.labelled$stage), margin = 2)
+propotions_cells_percluster.df <- as.data.frame(propotions_cells_percluster)
+t(propotions_cells_percluster)
+
+ggplot(propotions_cells_percluster.df, aes(fill= Var2, x=Var1,y=Freq)) + 
+  geom_bar(position="dodge", stat = "identity") + theme_bw() + 
+  geom_text(aes(label = sprintf("%0.2f", round(Freq, 2))), color="black", size=3.5, position = position_dodge(0.9), vjust = 0)
+
+ggplot(propotions_cells_percluster.df, aes(fill= Var1, x=Var2,y=Freq)) + 
+  geom_bar(position="fill", stat = "identity") +
+  geom_text(aes(label = sprintf("%0.2f", round(Freq, 2))), color="black", size=3.5,position = position_stack(vjust = 0.5))
+
+propotions_cells_percluster <- prop.table(table(all.m.labelled$seurat.annotations, all.m.labelled$stage), margin = 2)
+propotions_cells_percluster.df <- as.data.frame(propotions_cells_percluster)
+t(propotions_cells_percluster)
+
+ggplot(propotions_cells_percluster.df, aes(fill= Var2, x=Var1,y=Freq)) + 
+  geom_bar(position="dodge", stat = "identity") + theme_bw() + scale_fill_manual(values = c("turquoise3","green3","red3"))+
+  geom_text(aes(label = sprintf("%0.2f", round(Freq, 2))), color="black", size=3.5, position = position_dodge(0.9), vjust = 0)
+
+ggplot(propotions_cells_percluster.df, aes(fill= Var1, x=Var2,y=Freq)) + 
+  geom_bar(position="fill", stat = "identity") + 
+  geom_text(aes(label = sprintf("%0.2f", round(Freq, 2))), color="black", size=3.5,position = position_stack(vjust = 0.5))
+
+propotions_cells_percluster <- prop.table(table(all.m.labelled$seurat.annotations, all.m.labelled$gene_class), margin = 2)
+propotions_cells_percluster.df <- as.data.frame(propotions_cells_percluster)
+t(propotions_cells_percluster)
+
+ggplot(propotions_cells_percluster.df, aes(fill= Var2, x=Var1,y=Freq)) + 
+  geom_bar(position="dodge", stat = "identity") + theme_bw() +
+  geom_text(aes(label = sprintf("%0.2f", round(Freq, 2))), color="black", size=3.5, position = position_dodge(0.9), vjust = 0)
+
+ggplot(propotions_cells_percluster.df, aes(fill= Var1, x=Var2,y=Freq)) + 
+  geom_bar(position="fill", stat = "identity") + 
+  geom_text(aes(label = sprintf("%0.2f", round(Freq, 2))), color="black", size=3.5,position = position_stack(vjust = 0.5))
+dev.off()
+
+# save as seurat object 
+summary(all.m.labelled@meta.data)
+saveRDS(all.m.labelled, file="~/Desktop/10x/mm39/all.m.labelled.SCT.rds")
