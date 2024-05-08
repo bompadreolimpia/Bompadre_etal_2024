@@ -1,0 +1,8 @@
+all.m.lab.sub <- readRDS("~/Desktop/10x/mm39/all.m.labelled.sub.rds")
+all.m.lab.sub
+summary(all.m.lab.sub@meta.data)
+DimPlot(all.m.lab.sub, reduction = "umap", label = TRUE)
+
+Plot_Density_Custom(seurat_object = all.m.lab.sub, features = "Shox2")
+Plot_Density_Custom(seurat_object = all.m.lab.sub, features = "CRE")
+Plot_Density_Custom(seurat_object = all.m.lab.sub, features = "Hoxd13")
