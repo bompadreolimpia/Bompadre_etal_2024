@@ -1,0 +1,12 @@
+
+#!/bin/sh
+#SBATCH -J mm39_dCas9P300_bGHpA
+#SBATCH -n 1
+#SBATCH -c 12
+#SBATCH --mem 64G
+#SBATCH -p shared-cpu
+#SBATCH -t 06:00:00
+
+export PATH=$PATH:/home/users/b/bompadre/softwares/cellranger-6.1.2/ #to load cellranger
+
+cellranger mkref --genome=cr_mm39_dCas9P300_bGHpA --fasta=/home/share/andrey_lab/Genomes/mm39_dCas9P300_bGHpA/mm39_dCas9P300_bGHpA.fa --genes=/home/share/andrey_lab/Genomes/mm39_dCas9P300_bGHpA/filtered_gtf/mergeOverlapGenesOfFilteredTranscriptsOfMus_musculus.GRCm39.104_dCas9P300_bGHpA_ExonsOnly_UCSC.gtf
