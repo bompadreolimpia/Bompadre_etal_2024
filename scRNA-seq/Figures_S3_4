@@ -1,0 +1,40 @@
+#figures
+
+#S3A
+pdf(file=paste0("markers_by_ident_merged.replicates.pdf"))
+FeaturePlot(object = all.int.labelled, features = c('Pitx1'), cols = c("grey95","darkred"), split.by= "stage", keep.scale = "feature", min.cutoff = 0, combine = FALSE)
+dev.off()
+
+#S3B
+pdf(file=paste0("Vln_Pitx1_by_cluster.pdf"))
+VlnPlot(object = all.int.labelled, assay = "RNA", features = "Pitx1", group.by = "seurat.annotations", split.by = "stage", pt.size = 0, y.max = 4) + ggtitle("Pitx1") +
+  stat_summary(fun.y = fun1, geom = "point", shape=95, size=4,colour="red" ) + stat_summary(fun.y = fun1, geom="text", aes(label=sprintf("%1.3f", ..y..))) 
+dev.off()
+
+#Figure 4
+
+#4A
+
+pdf(file=paste0("All_clusters.pdf"))
+DimPlot(all.int.labelled, reduction = "umap",label = TRUE, label.size = 3, group.by = "seurat.annotations")
+dev.off()
+
+pdf(file=paste0("All_mesenchyme_clusters.pdf"))
+DimPlot(all.m.labelled, reduction = "umap",label = TRUE, label.size = 3, group.by = "seurat.annotations")
+dev.off()
+
+#4B
+
+all.m.labelled <- readRDS("~/Desktop/10x/mm39/all.m.labelled.SCT.rds")
+
+VlnPlot(all.m.labelled, features = "Pitx1", split.by = "stage") +
+  geom_boxplot(width=0.1, fill="white")
+
+log1p(AverageExpression(all.m.labelled, features = "Pitx1", verbose = FALSE, group.by = "stage")$RNA)
+
+fun1 = function (x) {log1p(mean(x = expm1(x = x)))}
+
+pdf(file=paste0("Vln_Pitx1_by_m.cluster.pdf"))
+VlnPlot(object = all.m.labelled, assay = "RNA", features = "Pitx1", group.by = "seurat.annotations", split.by = "stage", pt.size = 0, y.max = 4) + ggtitle("Pitx1") +
+  stat_summary(fun.y = fun1, geom = "point", shape=95, size=4,colour="red" ) + stat_summary(fun.y = fun1, geom="text", aes(label=sprintf("%1.3f", ..y..))) 
+dev.off()
