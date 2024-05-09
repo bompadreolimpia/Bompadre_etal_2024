@@ -22,11 +22,11 @@ genome=mm39
 adapterSeq="NextSeq"
 ensemblVersion=104
 versionOfGtf="Mus_musculus.GRCm39.$ensemblVersion"
-gtfFile=/home/share/andrey_lab/Genomes_FD/${genome}/filtered_gtf/mergeOverlapGenesOfFilteredTranscriptsOfMus_musculus.GRCm39.104_ExonsOnly_UCSC.gtf
+gtfFile=/home/share/andrey_lab/Genomes/${genome}/filtered_gtf/mergeOverlapGenesOfFilteredTranscriptsOfMus_musculus.GRCm39.104_ExonsOnly_UCSC.gtf
 
 pathForTable="/home/users/b/bompadre/fastq/Processing/table.txt"
-pathForFasta="/home/share/andrey_lab/Genomes_FD/${genome}/"
-pathForIndex="/home/share/andrey_lab/Genomes_FD/${genome}/STAR/"
+pathForFasta="/home/share/andrey_lab/Genomes/${genome}/"
+pathForIndex="/home/share/andrey_lab/Genomes/${genome}/STAR/"
 indexPath=${pathForIndex}
 
 # I tryed 36 and it failed:
